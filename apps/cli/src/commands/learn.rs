@@ -32,7 +32,7 @@ pub async fn run(args: LearnArgs, client: &HubClient) -> Result<()> {
     let payload: Option<serde_json::Value> = args
         .payload
         .as_deref()
-        .map(|s| serde_json::from_str(s))
+        .map(serde_json::from_str)
         .transpose()
         .map_err(|e| anyhow::anyhow!("invalid --payload JSON: {e}"))?;
 

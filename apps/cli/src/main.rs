@@ -86,7 +86,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Prefer CLI flag token over saved config token
     let saved_token = crate::config::CliConfig::load().ok().and_then(|c| c.token);
-    let token = cli.token.as_deref().or_else(|| saved_token.as_deref());
+    let token = cli.token.as_deref().or(saved_token.as_deref());
 
     let client = client::HubClient::new(&cli.server, token);
 

@@ -286,13 +286,13 @@ pub async fn update_me(
 
     // Check email uniqueness if changed
     if let Some(ref new_email) = req.email {
-        if user.email.as_deref() != Some(new_email.as_str()) {
-            if state.users.find_by_email(new_email).await?.is_some() {
-                return Err(ApiError::Conflict(format!(
-                    "email '{}' already registered",
-                    new_email
-                )));
-            }
+        if user.email.as_deref() != Some(new_email.as_str())
+            && state.users.find_by_email(new_email).await?.is_some()
+        {
+            return Err(ApiError::Conflict(format!(
+                "email '{}' already registered",
+                new_email
+            )));
         }
         user.email = Some(new_email.clone());
     }
