@@ -78,7 +78,7 @@ validator = { version = "0.19", features = ["derive"] }
 
 # OpenAPI
 utoipa = { version = "5", features = ["axum_extras", "uuid", "chrono"] }
-utoipa-swagger-ui = { version = "8", features = ["axum"] }
+utoipa-swagger-ui = { version = "8", features = ["axum", "reqwest"] }
 
 # GraphQL
 async-graphql = { version = "7", features = ["uuid", "chrono", "tracing"] }

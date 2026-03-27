@@ -4,7 +4,8 @@ FROM rust:1.88-slim AS builder
 WORKDIR /app
 
 # Install build dependencies
-RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+# curl is required by utoipa-swagger-ui build script to download Swagger UI assets
+RUN apt-get update && apt-get install -y pkg-config libssl-dev curl && rm -rf /var/lib/apt/lists/*
 
 # Cache dependencies by copying manifests first
 COPY Cargo.toml Cargo.lock ./
