@@ -52,7 +52,7 @@ serde_json = { version = "1" }
 toml = { version = "0.8" }
 
 # Auth
-jsonwebtoken = { version = "9" }
+jsonwebtoken = { version = "10" }
 argon2 = { version = "0.5" }
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 rand = { version = "0.8" }
