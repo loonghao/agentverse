@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/loonghao/agentverse/compare/v0.1.2...v0.1.3) (2026-03-27)
+
+
+### Bug Fixes
+
+* add curl to builder stage and enable reqwest feature for utoipa-swagger-ui ([0b0614f](https://github.com/loonghao/agentverse/commit/0b0614f42a58b96cdeec1f506a88809be1e326b0))
+
 ## [0.1.2](https://github.com/loonghao/agentverse/compare/v0.1.1...v0.1.2) (2026-03-27)
 
 
