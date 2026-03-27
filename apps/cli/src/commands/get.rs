@@ -63,7 +63,7 @@ fn build_path(artifact: &str) -> Result<String> {
     let (base, ver) = if let Some(pos) = artifact.find('@') {
         (&artifact[..pos], Some(&artifact[pos + 1..]))
     } else {
-        (artifact.as_ref(), None)
+        (artifact, None)
     };
 
     let parts: Vec<&str> = base.splitn(3, '/').collect();

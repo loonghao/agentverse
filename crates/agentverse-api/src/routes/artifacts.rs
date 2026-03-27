@@ -300,7 +300,7 @@ pub async fn update_artifact(
             version: next_ver.clone(),
             major: next_ver
                 .split('.')
-                .nth(0)
+                .next()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(0),
             minor: next_ver
