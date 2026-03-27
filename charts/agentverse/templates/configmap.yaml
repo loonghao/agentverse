@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "agentverse.fullname" . }}
+  labels:
+    {{- include "agentverse.labels" . | nindent 4 }}
+data:
+  default.toml: |
+    [server]
+    host = {{ .Values.config.server.host | quote }}
+    port = {{ .Values.config.server.port }}
+    body_limit = {{ .Values.config.server.bodyLimit }}
+
+    [database]
+    max_connections = {{ .Values.config.database.maxConnections }}
+    min_connections = {{ .Values.config.database.minConnections }}
+    connect_timeout_secs = {{ .Values.config.database.connectTimeoutSecs }}
+
+    [redis]
+    pool_size = {{ .Values.config.redis.poolSize }}
+    default_ttl_secs = {{ .Values.config.redis.defaultTtlSecs }}
+
+    [storage]
+    region = {{ .Values.config.storage.region | quote }}
+    bucket = {{ .Values.config.storage.bucket | quote }}
+
+    [auth]
+    access_token_expiry_secs = {{ .Values.config.auth.accessTokenExpirySecs }}
+    refresh_token_expiry_secs = {{ .Values.config.auth.refreshTokenExpirySecs }}
+
