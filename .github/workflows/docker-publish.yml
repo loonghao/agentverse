@@ -1,9 +1,14 @@
 name: Docker Publish
 
 on:
-  workflow_run:
-    workflows: ["Release"]
-    types: [completed]
+  push:
+    tags:
+      - "v*"
+  workflow_call:
+    inputs:
+      tag_name:
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       version:
@@ -21,13 +26,15 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
         platform: [linux/amd64, linux/arm64]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
+        with:
+          # For tag push events, checkout the specific tag
+          ref: ${{ github.event_name == 'push' && github.ref || '' }}
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
@@ -38,8 +45,11 @@ jobs:
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             VERSION="${{ github.event.inputs.version }}"
+          elif [[ "${{ github.event_name }}" == "workflow_call" ]]; then
+            VERSION="${{ inputs.tag_name }}"
           else
-            VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+            # push to tag: GITHUB_REF = refs/tags/v1.2.3
+            VERSION="${GITHUB_REF#refs/tags/}"
           fi
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "version_short=${VERSION#v}" >> $GITHUB_OUTPUT
@@ -81,8 +91,10 @@ jobs:
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             VERSION="${{ github.event.inputs.version }}"
+          elif [[ "${{ github.event_name }}" == "workflow_call" ]]; then
+            VERSION="${{ inputs.tag_name }}"
           else
-            VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+            VERSION="${GITHUB_REF#refs/tags/}"
           fi
           echo "version_short=${VERSION#v}" >> $GITHUB_OUTPUT
       - name: Login to GitHub Container Registry

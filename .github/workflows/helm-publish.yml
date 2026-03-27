@@ -1,0 +1,102 @@
+name: Helm Chart Publish
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (e.g., v1.0.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  GHCR_REPO: ghcr.io/loonghao/agentverse
+  CHART_DIR: charts/agentverse
+
+jobs:
+  publish-helm-chart:
+    name: Publish Helm Chart to GHCR (OCI)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          VERSION_SHORT="${VERSION#v}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "version_short=${VERSION_SHORT}" >> $GITHUB_OUTPUT
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "3.17.0"
+
+      - name: Update Chart.yaml version
+        shell: bash
+        run: |
+          VERSION_SHORT="${{ steps.version.outputs.version_short }}"
+          sed -i "s/^version: .*/version: ${VERSION_SHORT}/" ${{ env.CHART_DIR }}/Chart.yaml
+          sed -i "s/^appVersion: .*/appVersion: \"${VERSION_SHORT}\"/" ${{ env.CHART_DIR }}/Chart.yaml
+          echo "Updated Chart.yaml:"
+          cat ${{ env.CHART_DIR }}/Chart.yaml
+
+      - name: Update Helm dependencies
+        shell: bash
+        run: |
+          helm dependency update ${{ env.CHART_DIR }}
+
+      - name: Lint Helm chart
+        run: helm lint ${{ env.CHART_DIR }}
+
+      - name: Package Helm chart
+        shell: bash
+        run: |
+          mkdir -p dist/charts
+          helm package ${{ env.CHART_DIR }} --destination dist/charts
+          echo "Packaged chart:"
+          ls -la dist/charts/
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push Helm chart to GHCR (OCI)
+        shell: bash
+        run: |
+          CHART_PACKAGE=$(ls dist/charts/*.tgz)
+          VERSION_SHORT="${{ steps.version.outputs.version_short }}"
+
+          # Push to OCI registry
+          helm push "${CHART_PACKAGE}" oci://${{ env.GHCR_REPO }}/charts
+
+          echo "✅ Helm chart pushed:"
+          echo "  oci://${{ env.GHCR_REPO }}/charts/agentverse:${VERSION_SHORT}"
+          echo ""
+          echo "Install with:"
+          echo "  helm install agentverse oci://${{ env.GHCR_REPO }}/charts/agentverse --version ${VERSION_SHORT}"
+
+      - name: Upload chart artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: helm-chart-${{ steps.version.outputs.version_short }}
+          path: dist/charts/
+          if-no-files-found: error
+

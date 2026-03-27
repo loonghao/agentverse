@@ -1,0 +1,31 @@
+apiVersion: v2
+name: agentverse
+description: 🌌 The Universal Agent Marketplace — publish, discover and compose AI skills, agents, workflows, souls and more
+type: application
+version: 0.1.0
+appVersion: "0.1.1"
+
+keywords:
+  - ai
+  - agents
+  - marketplace
+  - skills
+  - mcp
+
+home: https://github.com/loonghao/agentverse
+sources:
+  - https://github.com/loonghao/agentverse
+maintainers:
+  - name: loonghao
+    email: hal.long@outlook.com
+
+dependencies:
+  - name: postgresql
+    version: "16.x.x"
+    repository: "oci://registry-1.docker.io/bitnamicharts"
+    condition: postgresql.enabled
+  - name: redis
+    version: "20.x.x"
+    repository: "oci://registry-1.docker.io/bitnamicharts"
+    condition: redis.enabled
+

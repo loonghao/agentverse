@@ -35,13 +35,27 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-      - name: Trigger Release workflow
+      - name: Trigger downstream workflows
         if: ${{ steps.release.outputs.release_created == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN != '' && secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ steps.release.outputs.tag_name }}
+          REPO: ${{ github.repository }}
         run: |
-          echo "Release created: ${{ steps.release.outputs.tag_name }}"
+          echo "Release created: ${TAG_NAME}"
+
+          # Build multi-platform binaries and upload to GitHub Release
           gh workflow run release.yml \
-            --repo "${{ github.repository }}" \
-            --field "tag_name=${{ steps.release.outputs.tag_name }}"
+            --repo "${REPO}" \
+            --field "tag_name=${TAG_NAME}"
+
+          # Build and push Docker image to GHCR
+          gh workflow run docker-publish.yml \
+            --repo "${REPO}" \
+            --field "version=${TAG_NAME}"
+
+          # Package and push Helm chart to GHCR (OCI)
+          gh workflow run helm-publish.yml \
+            --repo "${REPO}" \
+            --field "version=${TAG_NAME}"
 
