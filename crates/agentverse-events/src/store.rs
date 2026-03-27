@@ -1,9 +1,14 @@
+use async_trait::async_trait;
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
+};
 use uuid::Uuid;
 
 use agentverse_core::error::{CoreError, StorageError};
+use agentverse_storage::DatabasePool;
 
+use crate::sink::EventSink;
 use crate::types::{DomainEvent, EventEnvelope};
 
 // Re-use the event entity from storage by defining a minimal inline entity.
@@ -32,22 +37,33 @@ mod event_entity {
 
 /// Append-only event store backed by PostgreSQL.
 pub struct EventStore {
-    db: DatabaseConnection,
+    db: DatabasePool,
+}
+
+#[async_trait]
+impl EventSink for EventStore {
+    async fn append(&self, event: DomainEvent) -> Result<EventEnvelope, CoreError> {
+        self.append_inner(event).await
+    }
+
+    async fn load(&self, aggregate_id: Uuid) -> Result<Vec<EventEnvelope>, CoreError> {
+        self.load_inner(aggregate_id).await
+    }
 }
 
 impl EventStore {
-    pub fn new(db: DatabaseConnection) -> Self {
+    pub fn new(db: DatabasePool) -> Self {
         Self { db }
     }
 
     /// Append a domain event to the store.
     /// Returns the stored envelope with its assigned sequence number.
-    pub async fn append(&self, event: DomainEvent) -> Result<EventEnvelope, CoreError> {
+    async fn append_inner(&self, event: DomainEvent) -> Result<EventEnvelope, CoreError> {
         let aggregate_id = event.aggregate_id();
         let next_seq = self.next_sequence(aggregate_id).await?;
 
-        let payload = serde_json::to_value(&event)
-            .map_err(|e| CoreError::Internal(e.to_string()))?;
+        let payload =
+            serde_json::to_value(&event).map_err(|e| CoreError::Internal(e.to_string()))?;
 
         let now = Utc::now().fixed_offset();
         let id = Uuid::new_v4();
@@ -79,7 +95,7 @@ impl EventStore {
     }
 
     /// Fetch all events for a given aggregate (sorted by sequence).
-    pub async fn load(&self, aggregate_id: Uuid) -> Result<Vec<EventEnvelope>, CoreError> {
+    async fn load_inner(&self, aggregate_id: Uuid) -> Result<Vec<EventEnvelope>, CoreError> {
         event_entity::Entity::find()
             .filter(event_entity::Column::AggregateId.eq(aggregate_id))
             .order_by_asc(event_entity::Column::Sequence)
@@ -122,4 +138,3 @@ impl EventStore {
         Ok(result.and_then(|r| r.max_seq).unwrap_or(0) + 1)
     }
 }
-

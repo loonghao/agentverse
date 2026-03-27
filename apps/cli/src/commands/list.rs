@@ -17,7 +17,10 @@ pub struct ListArgs {
 }
 
 pub async fn run(args: ListArgs, client: &HubClient) -> Result<()> {
-    let mut path = format!("/api/v1/{}?limit={}&offset={}", args.kind, args.limit, args.offset);
+    let mut path = format!(
+        "/api/v1/{}?limit={}&offset={}",
+        args.kind, args.limit, args.offset
+    );
     if let Some(ns) = &args.namespace {
         path.push_str(&format!("&namespace={ns}"));
     }
@@ -40,15 +43,8 @@ pub async fn run(args: ListArgs, client: &HubClient) -> Result<()> {
             "deprecated" => status.yellow(),
             _ => status.red(),
         };
-        println!(
-            "  {}/{} {} ↓{}",
-            ns.cyan(),
-            name.bold(),
-            status_colored,
-            dl,
-        );
+        println!("  {}/{} {} ↓{}", ns.cyan(), name.bold(), status_colored, dl,);
     }
     println!();
     Ok(())
 }
-

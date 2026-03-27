@@ -144,4 +144,3 @@ mod tests {
         assert_eq!(VersionEngine::infer_bump(&old, &new), VersionBump::Minor);
     }
 }
-

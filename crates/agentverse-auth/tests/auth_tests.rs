@@ -91,4 +91,3 @@ fn private_key_hex_roundtrip() {
     let sig = mgr2.sign(b"hello");
     assert!(SigningManager::verify(&mgr.public_key_hex(), b"hello", &sig).is_ok());
 }
-

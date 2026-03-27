@@ -13,7 +13,10 @@ pub struct VersionsArgs {
 pub async fn run(args: VersionsArgs, client: &HubClient) -> Result<()> {
     let parts: Vec<&str> = args.artifact.splitn(3, '/').collect();
     if parts.len() != 3 {
-        anyhow::bail!("artifact must be kind/namespace/name, got: {}", args.artifact);
+        anyhow::bail!(
+            "artifact must be kind/namespace/name, got: {}",
+            args.artifact
+        );
     }
     let path = format!("/api/v1/{}/{}/{}/versions", parts[0], parts[1], parts[2]);
     let resp: serde_json::Value = client.get_json(&path).await?;
@@ -45,4 +48,3 @@ pub async fn run(args: VersionsArgs, client: &HubClient) -> Result<()> {
     println!();
     Ok(())
 }
-

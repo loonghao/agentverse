@@ -17,12 +17,20 @@ fn mcp_initialize_response_has_version() {
 #[test]
 fn mcp_tool_list_has_required_tools() {
     let tools = serde_json::json!([
-        "search_skills", "get_artifact", "publish_artifact", "fork_artifact", "submit_learning"
+        "search_skills",
+        "get_artifact",
+        "publish_artifact",
+        "fork_artifact",
+        "submit_learning"
     ]);
     let required = ["search_skills", "get_artifact", "publish_artifact"];
     for tool in required {
         assert!(
-            tools.as_array().unwrap().iter().any(|t| t.as_str() == Some(tool)),
+            tools
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|t| t.as_str() == Some(tool)),
             "missing tool: {tool}"
         );
     }
@@ -32,12 +40,11 @@ fn mcp_tool_list_has_required_tools() {
 fn kind_parse_valid() {
     let kinds = ["skill", "soul", "agent", "workflow", "prompt"];
     for k in kinds {
-        assert!(["skill","soul","agent","workflow","prompt"].contains(&k));
+        assert!(["skill", "soul", "agent", "workflow", "prompt"].contains(&k));
     }
 }
 
 #[test]
 fn kind_parse_invalid_rejected() {
-    assert!(!["skill","soul","agent","workflow","prompt"].contains(&"invalid-kind"));
+    assert!(!["skill", "soul", "agent", "workflow", "prompt"].contains(&"invalid-kind"));
 }
-

@@ -7,4 +7,3 @@ pub use artifact::ArtifactRepo;
 pub use social::SocialRepo;
 pub use user::UserRepo;
 pub use version::VersionRepo;
-

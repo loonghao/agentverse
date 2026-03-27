@@ -39,6 +39,7 @@ sea-orm = { version = "1", features = [
     "with-chrono",
     "with-json",
     "with-rust_decimal",
+    "mock",
 ] }
 sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls", "uuid", "chrono", "json", "migrate"] }
 

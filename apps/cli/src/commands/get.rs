@@ -19,10 +19,14 @@ pub async fn run(args: GetArgs, client: &HubClient) -> Result<()> {
 
     println!(
         "\n{} {}/{} {}",
-        format!("[{}]", artifact["kind"].as_str().unwrap_or("?")).cyan().bold(),
+        format!("[{}]", artifact["kind"].as_str().unwrap_or("?"))
+            .cyan()
+            .bold(),
         artifact["namespace"].as_str().unwrap_or("?"),
         artifact["name"].as_str().unwrap_or("?"),
-        format!("v{}", version["version"].as_str().unwrap_or("?")).green().bold(),
+        format!("v{}", version["version"].as_str().unwrap_or("?"))
+            .green()
+            .bold(),
     );
 
     if let Some(desc) = artifact["manifest"]["description"].as_str() {
@@ -38,9 +42,12 @@ pub async fn run(args: GetArgs, client: &HubClient) -> Result<()> {
 
     println!(
         "  {} {} | {} {} | {} {}",
-        "checksum:".dimmed(), version["checksum"].as_str().unwrap_or("?"),
-        "downloads:".dimmed(), artifact["downloads"].as_i64().unwrap_or(0),
-        "status:".dimmed(), artifact["status"].as_str().unwrap_or("?"),
+        "checksum:".dimmed(),
+        version["checksum"].as_str().unwrap_or("?"),
+        "downloads:".dimmed(),
+        artifact["downloads"].as_i64().unwrap_or(0),
+        "status:".dimmed(),
+        artifact["status"].as_str().unwrap_or("?"),
     );
 
     if let Some(changelog) = version["changelog"].as_str() {
@@ -71,4 +78,3 @@ fn build_path(artifact: &str) -> Result<String> {
         path
     })
 }
-

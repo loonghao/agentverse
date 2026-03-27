@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait,
-    QueryFilter, QueryOrder, QuerySelect, Statement,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect, Statement,
 };
 use uuid::Uuid;
 
@@ -12,14 +12,15 @@ use agentverse_core::{
     repository::{ArtifactFilter, ArtifactRepository},
 };
 
+use crate::connection::DatabasePool;
 use crate::entities::artifact::{self, Entity as ArtifactEntity};
 
 pub struct ArtifactRepo {
-    pub db: DatabaseConnection,
+    pub db: DatabasePool,
 }
 
 impl ArtifactRepo {
-    pub fn new(db: DatabaseConnection) -> Self {
+    pub fn new(db: DatabasePool) -> Self {
         Self { db }
     }
 }
@@ -168,7 +169,8 @@ impl ArtifactRepository for ArtifactRepo {
                 ArtifactStatus::Retired => "retired",
                 ArtifactStatus::Revoked => "revoked",
                 ArtifactStatus::Active => "active",
-            }.into()),
+            }
+            .into()),
             updated_at: Set(chrono::Utc::now().fixed_offset()),
             ..Default::default()
         };
@@ -266,9 +268,8 @@ impl ArtifactRepo {
         .iter()
         .filter_map(|r| Row::from_query_result(r, "").ok())
         .map(|r| {
-            let manifest: agentverse_core::artifact::Manifest =
-                serde_json::from_value(r.manifest)
-                    .map_err(|e| CoreError::InvalidManifest(e.to_string()))?;
+            let manifest: agentverse_core::artifact::Manifest = serde_json::from_value(r.manifest)
+                .map_err(|e| CoreError::InvalidManifest(e.to_string()))?;
             Ok(Artifact {
                 id: r.id,
                 kind: match r.kind.as_str() {
@@ -297,4 +298,3 @@ impl ArtifactRepo {
         .collect()
     }
 }
-

@@ -4,11 +4,11 @@
 //!
 //! Protocol: JSON-RPC 2.0 over HTTP POST /mcp
 
-use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use serde::{Deserialize, Serialize};
 
-use agentverse_core::repository::ArtifactFilter;
 use crate::state::AppState;
+use agentverse_core::repository::ArtifactFilter;
 
 // ── JSON-RPC 2.0 types ───────────────────────────────────────────────────────
 
@@ -38,11 +38,21 @@ pub struct JsonRpcError {
 
 impl JsonRpcResponse {
     fn ok(id: Option<serde_json::Value>, result: serde_json::Value) -> Self {
-        Self { jsonrpc: "2.0".into(), id, result: Some(result), error: None }
+        Self {
+            jsonrpc: "2.0".into(),
+            id,
+            result: Some(result),
+            error: None,
+        }
     }
 
     fn err(id: Option<serde_json::Value>, code: i32, message: String) -> Self {
-        Self { jsonrpc: "2.0".into(), id, result: None, error: Some(JsonRpcError { code, message }) }
+        Self {
+            jsonrpc: "2.0".into(),
+            id,
+            result: None,
+            error: Some(JsonRpcError { code, message }),
+        }
     }
 }
 
@@ -291,7 +301,10 @@ async fn handle_tool_call(
     params: Option<serde_json::Value>,
     state: &AppState,
 ) -> JsonRpcResponse {
-    let tool_name = params.as_ref().and_then(|p| p["name"].as_str()).unwrap_or("");
+    let tool_name = params
+        .as_ref()
+        .and_then(|p| p["name"].as_str())
+        .unwrap_or("");
     // Convert args Map to Value for safe indexing (Map["key"] panics on missing keys,
     // but Value["key"] returns Null instead).
     let args: serde_json::Value = params
@@ -308,13 +321,16 @@ async fn handle_tool_call(
             let limit = args["limit"].as_u64().unwrap_or(10);
 
             match state.fulltext.search(query, kind, None, limit).await {
-                Ok(results) => JsonRpcResponse::ok(id, serde_json::json!({
-                    "content": [{
-                        "type": "text",
-                        "text": serde_json::to_string_pretty(&results).unwrap_or_default()
-                    }],
-                    "results": results,
-                })),
+                Ok(results) => JsonRpcResponse::ok(
+                    id,
+                    serde_json::json!({
+                        "content": [{
+                            "type": "text",
+                            "text": serde_json::to_string_pretty(&results).unwrap_or_default()
+                        }],
+                        "results": results,
+                    }),
+                ),
                 Err(e) => JsonRpcResponse::err(id, -32000, e.to_string()),
             }
         }
@@ -326,7 +342,11 @@ async fn handle_tool_call(
 
             let kind = parse_kind_mcp(kind_str);
 
-            match state.artifacts.find_by_namespace_name(&kind, ns, name).await {
+            match state
+                .artifacts
+                .find_by_namespace_name(&kind, ns, name)
+                .await
+            {
                 Ok(Some(artifact)) => {
                     let version_result = if let Some(v) = ver {
                         state.versions.find_by_semver(artifact.id, v).await
@@ -334,16 +354,21 @@ async fn handle_tool_call(
                         state.versions.find_latest(artifact.id).await
                     };
                     let version = version_result.ok().flatten();
-                    JsonRpcResponse::ok(id, serde_json::json!({
-                        "content": [{
-                            "type": "text",
-                            "text": format!("{}/{}/{}", kind_str, ns, name)
-                        }],
-                        "artifact": artifact,
-                        "version": version,
-                    }))
+                    JsonRpcResponse::ok(
+                        id,
+                        serde_json::json!({
+                            "content": [{
+                                "type": "text",
+                                "text": format!("{}/{}/{}", kind_str, ns, name)
+                            }],
+                            "artifact": artifact,
+                            "version": version,
+                        }),
+                    )
                 }
-                Ok(None) => JsonRpcResponse::err(id, -32001, format!("{kind_str}/{ns}/{name} not found")),
+                Ok(None) => {
+                    JsonRpcResponse::err(id, -32001, format!("{kind_str}/{ns}/{name} not found"))
+                }
                 Err(e) => JsonRpcResponse::err(id, -32000, e.to_string()),
             }
         }
@@ -364,11 +389,14 @@ async fn handle_tool_call(
             };
 
             match state.artifacts.list(filter).await {
-                Ok(items) => JsonRpcResponse::ok(id, serde_json::json!({
-                    "content": [{ "type": "text", "text": format!("Found {} artifacts", items.len()) }],
-                    "items": items,
-                    "total": items.len(),
-                })),
+                Ok(items) => JsonRpcResponse::ok(
+                    id,
+                    serde_json::json!({
+                        "content": [{ "type": "text", "text": format!("Found {} artifacts", items.len()) }],
+                        "items": items,
+                        "total": items.len(),
+                    }),
+                ),
                 Err(e) => JsonRpcResponse::err(id, -32000, e.to_string()),
             }
         }
@@ -377,48 +405,60 @@ async fn handle_tool_call(
             let ns = args["namespace"].as_str().unwrap_or("");
             let name = args["name"].as_str().unwrap_or("");
             // Publishing requires auth — return actionable guidance
-            JsonRpcResponse::ok(id, serde_json::json!({
-                "content": [{
-                    "type": "text",
-                    "text": format!(
-                        "To publish, send a POST /api/v1/{kind} request with a valid Bearer token.\n\
-                         Body: {{\"namespace\":\"{ns}\",\"name\":\"{name}\",\"content\":{{...}},\"manifest\":{{...}}}}"
-                    )
-                }],
-                "_meta": { "method": "POST", "path": format!("/api/v1/{kind}"), "requires_auth": true }
-            }))
+            JsonRpcResponse::ok(
+                id,
+                serde_json::json!({
+                    "content": [{
+                        "type": "text",
+                        "text": format!(
+                            "To publish, send a POST /api/v1/{kind} request with a valid Bearer token.\n\
+                             Body: {{\"namespace\":\"{ns}\",\"name\":\"{name}\",\"content\":{{...}},\"manifest\":{{...}}}}"
+                        )
+                    }],
+                    "_meta": { "method": "POST", "path": format!("/api/v1/{kind}"), "requires_auth": true }
+                }),
+            )
         }
         "fork_artifact" => {
             let kind = args["kind"].as_str().unwrap_or("skill");
             let ns = args["namespace"].as_str().unwrap_or("");
             let name = args["name"].as_str().unwrap_or("");
             let path = format!("/api/v1/{kind}/{ns}/{name}/fork");
-            JsonRpcResponse::ok(id, serde_json::json!({
-                "content": [{ "type": "text", "text": format!("POST {path} with Bearer token to fork") }],
-                "_meta": { "method": "POST", "path": path, "requires_auth": true }
-            }))
+            JsonRpcResponse::ok(
+                id,
+                serde_json::json!({
+                    "content": [{ "type": "text", "text": format!("POST {path} with Bearer token to fork") }],
+                    "_meta": { "method": "POST", "path": path, "requires_auth": true }
+                }),
+            )
         }
         "submit_learning" => {
             let kind = args["kind"].as_str().unwrap_or("skill");
             let ns = args["namespace"].as_str().unwrap_or("");
             let name = args["name"].as_str().unwrap_or("");
             let path = format!("/api/v1/{kind}/{ns}/{name}/learn");
-            JsonRpcResponse::ok(id, serde_json::json!({
-                "content": [{ "type": "text", "text": format!("POST {path} with Bearer token to submit learning") }],
-                "_meta": { "method": "POST", "path": path, "requires_auth": true }
-            }))
+            JsonRpcResponse::ok(
+                id,
+                serde_json::json!({
+                    "content": [{ "type": "text", "text": format!("POST {path} with Bearer token to submit learning") }],
+                    "_meta": { "method": "POST", "path": path, "requires_auth": true }
+                }),
+            )
         }
         "add_like" => {
             let kind = args["kind"].as_str().unwrap_or("skill");
             let ns = args["namespace"].as_str().unwrap_or("");
             let name = args["name"].as_str().unwrap_or("");
             let path = format!("/api/v1/{kind}/{ns}/{name}/likes");
-            JsonRpcResponse::ok(id, serde_json::json!({
-                "content": [{ "type": "text", "text": format!(
-                    "Send POST {path} with your Bearer token to like this artifact."
-                )}],
-                "_meta": { "method": "POST", "path": path, "requires_auth": true }
-            }))
+            JsonRpcResponse::ok(
+                id,
+                serde_json::json!({
+                    "content": [{ "type": "text", "text": format!(
+                        "Send POST {path} with your Bearer token to like this artifact."
+                    )}],
+                    "_meta": { "method": "POST", "path": path, "requires_auth": true }
+                }),
+            )
         }
         "add_rating" => {
             let kind = args["kind"].as_str().unwrap_or("skill");
@@ -427,15 +467,18 @@ async fn handle_tool_call(
             let score = args["score"].as_u64().unwrap_or(5);
             let review = args["review_text"].as_str().unwrap_or("");
             let path = format!("/api/v1/{kind}/{ns}/{name}/ratings");
-            JsonRpcResponse::ok(id, serde_json::json!({
-                "content": [{ "type": "text", "text": format!(
-                    "Send POST {path} with Bearer token. Body: {{\"score\":{score},\"review_text\":\"{review}\"}}"
-                )}],
-                "_meta": {
-                    "method": "POST", "path": path, "requires_auth": true,
-                    "body": { "score": score, "review_text": review }
-                }
-            }))
+            JsonRpcResponse::ok(
+                id,
+                serde_json::json!({
+                    "content": [{ "type": "text", "text": format!(
+                        "Send POST {path} with Bearer token. Body: {{\"score\":{score},\"review_text\":\"{review}\"}}"
+                    )}],
+                    "_meta": {
+                        "method": "POST", "path": path, "requires_auth": true,
+                        "body": { "score": score, "review_text": review }
+                    }
+                }),
+            )
         }
         "add_comment" => {
             let kind = args["kind"].as_str().unwrap_or("skill");
@@ -444,15 +487,18 @@ async fn handle_tool_call(
             let content = args["content"].as_str().unwrap_or("");
             let comment_kind = args["comment_kind"].as_str().unwrap_or("review");
             let path = format!("/api/v1/{kind}/{ns}/{name}/comments");
-            JsonRpcResponse::ok(id, serde_json::json!({
-                "content": [{ "type": "text", "text": format!(
-                    "Send POST {path} with Bearer token. Body: {{\"content\":\"{content}\",\"kind\":\"{comment_kind}\"}}"
-                )}],
-                "_meta": {
-                    "method": "POST", "path": path, "requires_auth": true,
-                    "body": { "content": content, "kind": comment_kind }
-                }
-            }))
+            JsonRpcResponse::ok(
+                id,
+                serde_json::json!({
+                    "content": [{ "type": "text", "text": format!(
+                        "Send POST {path} with Bearer token. Body: {{\"content\":\"{content}\",\"kind\":\"{comment_kind}\"}}"
+                    )}],
+                    "_meta": {
+                        "method": "POST", "path": path, "requires_auth": true,
+                        "body": { "content": content, "kind": comment_kind }
+                    }
+                }),
+            )
         }
         "get_artifact_stats" => {
             let kind_str = args["kind"].as_str().unwrap_or("skill");
@@ -460,11 +506,14 @@ async fn handle_tool_call(
             let name = args["name"].as_str().unwrap_or("");
 
             let kind = parse_kind_mcp(kind_str);
-            match state.artifacts.find_by_namespace_name(&kind, ns, name).await {
-                Ok(Some(artifact)) => {
-                    match state.social.get_stats(artifact.id).await {
-                        Ok(stats) => {
-                            let summary = format!(
+            match state
+                .artifacts
+                .find_by_namespace_name(&kind, ns, name)
+                .await
+            {
+                Ok(Some(artifact)) => match state.social.get_stats(artifact.id).await {
+                    Ok(stats) => {
+                        let summary = format!(
                                 "{}/{}/{}: {} likes, {} comments, {} ratings (avg {:.1}/5), {} downloads",
                                 kind_str, ns, name,
                                 stats.likes_count,
@@ -473,16 +522,20 @@ async fn handle_tool_call(
                                 stats.avg_rating.unwrap_or(0.0),
                                 artifact.downloads,
                             );
-                            JsonRpcResponse::ok(id, serde_json::json!({
+                        JsonRpcResponse::ok(
+                            id,
+                            serde_json::json!({
                                 "content": [{ "type": "text", "text": summary }],
                                 "stats": stats,
                                 "downloads": artifact.downloads,
-                            }))
-                        }
-                        Err(e) => JsonRpcResponse::err(id, -32000, e.to_string()),
+                            }),
+                        )
                     }
+                    Err(e) => JsonRpcResponse::err(id, -32000, e.to_string()),
+                },
+                Ok(None) => {
+                    JsonRpcResponse::err(id, -32001, format!("{kind_str}/{ns}/{name} not found"))
                 }
-                Ok(None) => JsonRpcResponse::err(id, -32001, format!("{kind_str}/{ns}/{name} not found")),
                 Err(e) => JsonRpcResponse::err(id, -32000, e.to_string()),
             }
         }
@@ -492,18 +545,25 @@ async fn handle_tool_call(
             let name = args["name"].as_str().unwrap_or("");
 
             let kind = parse_kind_mcp(kind_str);
-            match state.artifacts.find_by_namespace_name(&kind, ns, name).await {
-                Ok(Some(artifact)) => {
-                    match state.social.list_comments(artifact.id).await {
-                        Ok(comments) => JsonRpcResponse::ok(id, serde_json::json!({
+            match state
+                .artifacts
+                .find_by_namespace_name(&kind, ns, name)
+                .await
+            {
+                Ok(Some(artifact)) => match state.social.list_comments(artifact.id).await {
+                    Ok(comments) => JsonRpcResponse::ok(
+                        id,
+                        serde_json::json!({
                             "content": [{ "type": "text", "text": format!("{} comments on {}/{}/{}", comments.len(), kind_str, ns, name) }],
                             "comments": comments,
                             "total": comments.len(),
-                        })),
-                        Err(e) => JsonRpcResponse::err(id, -32000, e.to_string()),
-                    }
+                        }),
+                    ),
+                    Err(e) => JsonRpcResponse::err(id, -32000, e.to_string()),
+                },
+                Ok(None) => {
+                    JsonRpcResponse::err(id, -32001, format!("{kind_str}/{ns}/{name} not found"))
                 }
-                Ok(None) => JsonRpcResponse::err(id, -32001, format!("{kind_str}/{ns}/{name} not found")),
                 Err(e) => JsonRpcResponse::err(id, -32000, e.to_string()),
             }
         }
@@ -513,31 +573,38 @@ async fn handle_tool_call(
             let name = args["name"].as_str().unwrap_or("");
 
             let kind = parse_kind_mcp(kind_str);
-            match state.artifacts.find_by_namespace_name(&kind, ns, name).await {
-                Ok(Some(artifact)) => {
-                    match state.social.list_ratings(artifact.id).await {
-                        Ok(ratings) => {
-                            let avg = if ratings.is_empty() {
-                                None
-                            } else {
-                                let sum: f64 = ratings.iter().map(|r| r.score as f64).sum();
-                                Some(sum / ratings.len() as f64)
-                            };
-                            let summary = match avg {
-                                Some(a) => format!("{} ratings, average {:.1}/5", ratings.len(), a),
-                                None => "no ratings yet".to_string(),
-                            };
-                            JsonRpcResponse::ok(id, serde_json::json!({
+            match state
+                .artifacts
+                .find_by_namespace_name(&kind, ns, name)
+                .await
+            {
+                Ok(Some(artifact)) => match state.social.list_ratings(artifact.id).await {
+                    Ok(ratings) => {
+                        let avg = if ratings.is_empty() {
+                            None
+                        } else {
+                            let sum: f64 = ratings.iter().map(|r| r.score as f64).sum();
+                            Some(sum / ratings.len() as f64)
+                        };
+                        let summary = match avg {
+                            Some(a) => format!("{} ratings, average {:.1}/5", ratings.len(), a),
+                            None => "no ratings yet".to_string(),
+                        };
+                        JsonRpcResponse::ok(
+                            id,
+                            serde_json::json!({
                                 "content": [{ "type": "text", "text": summary }],
                                 "ratings": ratings,
                                 "total": ratings.len(),
                                 "avg_score": avg,
-                            }))
-                        }
-                        Err(e) => JsonRpcResponse::err(id, -32000, e.to_string()),
+                            }),
+                        )
                     }
+                    Err(e) => JsonRpcResponse::err(id, -32000, e.to_string()),
+                },
+                Ok(None) => {
+                    JsonRpcResponse::err(id, -32001, format!("{kind_str}/{ns}/{name} not found"))
                 }
-                Ok(None) => JsonRpcResponse::err(id, -32001, format!("{kind_str}/{ns}/{name} not found")),
                 Err(e) => JsonRpcResponse::err(id, -32000, e.to_string()),
             }
         }
@@ -547,21 +614,31 @@ async fn handle_tool_call(
             let name = args["name"].as_str().unwrap_or("");
 
             let kind = parse_kind_mcp(kind_str);
-            match state.artifacts.find_by_namespace_name(&kind, ns, name).await {
-                Ok(Some(artifact)) => {
-                    match state.versions.list_for_artifact(artifact.id).await {
-                        Ok(versions) => {
-                            let latest = versions.first().map(|v| v.version.as_str()).unwrap_or("none");
-                            JsonRpcResponse::ok(id, serde_json::json!({
+            match state
+                .artifacts
+                .find_by_namespace_name(&kind, ns, name)
+                .await
+            {
+                Ok(Some(artifact)) => match state.versions.list_for_artifact(artifact.id).await {
+                    Ok(versions) => {
+                        let latest = versions
+                            .first()
+                            .map(|v| v.version.as_str())
+                            .unwrap_or("none");
+                        JsonRpcResponse::ok(
+                            id,
+                            serde_json::json!({
                                 "content": [{ "type": "text", "text": format!("{} versions, latest: {}", versions.len(), latest) }],
                                 "versions": versions,
                                 "total": versions.len(),
-                            }))
-                        }
-                        Err(e) => JsonRpcResponse::err(id, -32000, e.to_string()),
+                            }),
+                        )
                     }
+                    Err(e) => JsonRpcResponse::err(id, -32000, e.to_string()),
+                },
+                Ok(None) => {
+                    JsonRpcResponse::err(id, -32001, format!("{kind_str}/{ns}/{name} not found"))
                 }
-                Ok(None) => JsonRpcResponse::err(id, -32001, format!("{kind_str}/{ns}/{name} not found")),
                 Err(e) => JsonRpcResponse::err(id, -32000, e.to_string()),
             }
         }
@@ -572,13 +649,10 @@ async fn handle_tool_call(
 /// Map a string kind to the enum (defaults to Skill for unknown values).
 fn parse_kind_mcp(k: &str) -> agentverse_core::artifact::ArtifactKind {
     match k {
-        "soul"     => agentverse_core::artifact::ArtifactKind::Soul,
-        "agent"    => agentverse_core::artifact::ArtifactKind::Agent,
+        "soul" => agentverse_core::artifact::ArtifactKind::Soul,
+        "agent" => agentverse_core::artifact::ArtifactKind::Agent,
         "workflow" => agentverse_core::artifact::ArtifactKind::Workflow,
-        "prompt"   => agentverse_core::artifact::ArtifactKind::Prompt,
-        _          => agentverse_core::artifact::ArtifactKind::Skill,
+        "prompt" => agentverse_core::artifact::ArtifactKind::Prompt,
+        _ => agentverse_core::artifact::ArtifactKind::Skill,
     }
 }
-
-
-

@@ -1,8 +1,7 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
 };
 use uuid::Uuid;
 
@@ -12,6 +11,7 @@ use agentverse_core::{
     social::{AgentInteraction, Comment, CommentKind, InteractionKind, Like, Rating},
 };
 
+use crate::connection::DatabasePool;
 use crate::entities::{
     agent_interaction::{self, Entity as InteractionEntity},
     comment::{self, Entity as CommentEntity},
@@ -20,11 +20,11 @@ use crate::entities::{
 };
 
 pub struct SocialRepo {
-    pub db: DatabaseConnection,
+    pub db: DatabasePool,
 }
 
 impl SocialRepo {
-    pub fn new(db: DatabaseConnection) -> Self {
+    pub fn new(db: DatabasePool) -> Self {
         Self { db }
     }
 }
@@ -201,17 +201,26 @@ impl SocialRepository for SocialRepo {
             created_at: chrono::DateTime<chrono::FixedOffset>,
         }
 
-        let rows = self.db
+        let rows = self
+            .db
             .query_all(Statement::from_sql_and_values(
                 sea_orm::DatabaseBackend::Postgres,
                 sql,
-                [l.id.into(), l.artifact_id.into(), l.version_id.into(), l.user_id.into()],
+                [
+                    l.id.into(),
+                    l.artifact_id.into(),
+                    l.version_id.into(),
+                    l.user_id.into(),
+                ],
             ))
             .await
             .map_err(|e| CoreError::Storage(StorageError(e.to_string())))?;
 
         // ON CONFLICT DO NOTHING returns 0 rows — fetch the existing like instead.
-        if let Some(row) = rows.first().and_then(|r| Row::from_query_result(r, "").ok()) {
+        if let Some(row) = rows
+            .first()
+            .and_then(|r| Row::from_query_result(r, "").ok())
+        {
             return Ok(Like {
                 id: row.id,
                 artifact_id: row.artifact_id,
@@ -271,7 +280,8 @@ impl SocialRepository for SocialRepo {
             created_at: chrono::DateTime<chrono::FixedOffset>,
         }
 
-        let rows = self.db
+        let rows = self
+            .db
             .query_all(Statement::from_sql_and_values(
                 sea_orm::DatabaseBackend::Postgres,
                 sql,
@@ -290,7 +300,9 @@ impl SocialRepository for SocialRepo {
         let row = rows
             .first()
             .and_then(|r| Row::from_query_result(r, "").ok())
-            .ok_or_else(|| CoreError::Storage(StorageError("rating upsert returned no row".into())))?;
+            .ok_or_else(|| {
+                CoreError::Storage(StorageError("rating upsert returned no row".into()))
+            })?;
 
         Ok(Rating {
             id: row.id,
@@ -325,10 +337,7 @@ impl SocialRepository for SocialRepo {
             .map_err(|e| CoreError::Storage(StorageError(e.to_string())))
     }
 
-    async fn record_interaction(
-        &self,
-        i: AgentInteraction,
-    ) -> Result<AgentInteraction, CoreError> {
+    async fn record_interaction(&self, i: AgentInteraction) -> Result<AgentInteraction, CoreError> {
         let kind_str = match &i.kind {
             InteractionKind::Learn => "learn",
             InteractionKind::Fork => "fork",
@@ -413,7 +422,8 @@ impl SocialRepository for SocialRepo {
                 (SELECT COUNT(*) FROM agent_interactions WHERE artifact_id = $1)::bigint AS interactions_count
         "#;
 
-        let rows = self.db
+        let rows = self
+            .db
             .query_all(Statement::from_sql_and_values(
                 sea_orm::DatabaseBackend::Postgres,
                 sql,
@@ -434,4 +444,3 @@ impl SocialRepository for SocialRepo {
             .ok_or_else(|| CoreError::Storage(StorageError("stats query returned no row".into())))
     }
 }
-

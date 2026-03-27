@@ -26,8 +26,8 @@ impl SigningManager {
 
     /// Load from 32-byte hex-encoded private key seed.
     pub fn from_hex(private_key_hex: &str) -> Result<Self, SigningError> {
-        let bytes = hex::decode(private_key_hex)
-            .map_err(|e| SigningError::HexDecode(e.to_string()))?;
+        let bytes =
+            hex::decode(private_key_hex).map_err(|e| SigningError::HexDecode(e.to_string()))?;
         let arr: [u8; 32] = bytes
             .try_into()
             .map_err(|_| SigningError::InvalidKey("must be 32 bytes".into()))?;
@@ -58,16 +58,16 @@ impl SigningManager {
         data: &[u8],
         signature_hex: &str,
     ) -> Result<(), SigningError> {
-        let pk_bytes = hex::decode(public_key_hex)
-            .map_err(|e| SigningError::HexDecode(e.to_string()))?;
+        let pk_bytes =
+            hex::decode(public_key_hex).map_err(|e| SigningError::HexDecode(e.to_string()))?;
         let pk_arr: [u8; 32] = pk_bytes
             .try_into()
             .map_err(|_| SigningError::InvalidKey("public key must be 32 bytes".into()))?;
         let verifying_key = VerifyingKey::from_bytes(&pk_arr)
             .map_err(|e| SigningError::InvalidKey(e.to_string()))?;
 
-        let sig_bytes = hex::decode(signature_hex)
-            .map_err(|e| SigningError::HexDecode(e.to_string()))?;
+        let sig_bytes =
+            hex::decode(signature_hex).map_err(|e| SigningError::HexDecode(e.to_string()))?;
         let sig_arr: [u8; 64] = sig_bytes
             .try_into()
             .map_err(|_| SigningError::InvalidKey("signature must be 64 bytes".into()))?;
@@ -101,4 +101,3 @@ mod tests {
         assert_eq!(mgr.public_key_hex(), mgr2.public_key_hex());
     }
 }
-

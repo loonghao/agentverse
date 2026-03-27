@@ -78,44 +78,41 @@ async fn main() -> anyhow::Result<()> {
     let _ = dotenvy::dotenv();
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "warn".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "warn".into()),
         )
         .init();
 
     let cli = Cli::parse();
 
     // Prefer CLI flag token over saved config token
-    let saved_token = crate::config::CliConfig::load().ok()
-        .and_then(|c| c.token);
-    let token = cli.token.as_deref()
-        .or_else(|| saved_token.as_deref());
+    let saved_token = crate::config::CliConfig::load().ok().and_then(|c| c.token);
+    let token = cli.token.as_deref().or_else(|| saved_token.as_deref());
 
     let client = client::HubClient::new(&cli.server, token);
 
     match cli.command {
         // Discovery
-        Commands::Search(args)    => commands::search::run(args, &client).await,
-        Commands::Get(args)       => commands::get::run(args, &client).await,
-        Commands::List(args)      => commands::list::run(args, &client).await,
-        Commands::Versions(args)  => commands::versions::run(args, &client).await,
+        Commands::Search(args) => commands::search::run(args, &client).await,
+        Commands::Get(args) => commands::get::run(args, &client).await,
+        Commands::List(args) => commands::list::run(args, &client).await,
+        Commands::Versions(args) => commands::versions::run(args, &client).await,
         // Publishing
-        Commands::Publish(args)   => commands::publish::run(args, &client).await,
-        Commands::Update(args)    => commands::update::run(args, &client).await,
-        Commands::Fork(args)      => commands::fork::run(args, &client).await,
+        Commands::Publish(args) => commands::publish::run(args, &client).await,
+        Commands::Update(args) => commands::update::run(args, &client).await,
+        Commands::Fork(args) => commands::fork::run(args, &client).await,
         Commands::Deprecate(args) => commands::deprecate::run(args, &client).await,
         // Auth
-        Commands::Register(args)  => commands::register::run(args, &client).await,
-        Commands::Login(args)     => commands::login::run(args, &client).await,
-        Commands::Whoami(args)    => commands::whoami::run(args, &client).await,
+        Commands::Register(args) => commands::register::run(args, &client).await,
+        Commands::Login(args) => commands::login::run(args, &client).await,
+        Commands::Whoami(args) => commands::whoami::run(args, &client).await,
         // Social
-        Commands::Comment(args)   => commands::social::run_comment(args, &client).await,
-        Commands::Like(args)      => commands::social::run_like(args, &client).await,
-        Commands::Unlike(args)    => commands::social::run_unlike(args, &client).await,
-        Commands::Rate(args)      => commands::social::run_rate(args, &client).await,
-        Commands::Stats(args)     => commands::social::run_stats(args, &client).await,
+        Commands::Comment(args) => commands::social::run_comment(args, &client).await,
+        Commands::Like(args) => commands::social::run_like(args, &client).await,
+        Commands::Unlike(args) => commands::social::run_unlike(args, &client).await,
+        Commands::Rate(args) => commands::social::run_rate(args, &client).await,
+        Commands::Stats(args) => commands::social::run_stats(args, &client).await,
         // Agent
-        Commands::Learn(args)     => commands::learn::run(args, &client).await,
+        Commands::Learn(args) => commands::learn::run(args, &client).await,
         Commands::Benchmark(args) => commands::benchmark::run(args, &client).await,
     }
 }

@@ -1,18 +1,19 @@
 //! Full-text search using PostgreSQL's built-in `tsvector` + GIN index.
 //! No external search service required.
 
-use sea_orm::{DatabaseConnection, FromQueryResult, Statement};
 use agentverse_core::error::{CoreError, StorageError};
+use agentverse_storage::DatabasePool;
+use sea_orm::{FromQueryResult, Statement};
 use uuid::Uuid;
 
 use crate::result::SearchResult;
 
 pub struct FullTextSearch {
-    db: DatabaseConnection,
+    db: DatabasePool,
 }
 
 impl FullTextSearch {
-    pub fn new(db: DatabaseConnection) -> Self {
+    pub fn new(db: DatabasePool) -> Self {
         Self { db }
     }
 
@@ -98,4 +99,3 @@ impl FullTextSearch {
         })
     }
 }
-

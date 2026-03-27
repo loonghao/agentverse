@@ -132,7 +132,10 @@ impl DomainEvent {
             | Self::LikeAdded { artifact_id, .. }
             | Self::LikeRemoved { artifact_id, .. }
             | Self::RatingAdded { artifact_id, .. }
-            | Self::ArtifactForked { new_artifact_id: artifact_id, .. }
+            | Self::ArtifactForked {
+                new_artifact_id: artifact_id,
+                ..
+            }
             | Self::AgentLearned { artifact_id, .. }
             | Self::AgentBenchmarked { artifact_id, .. } => *artifact_id,
             Self::UserRegistered { user_id, .. } | Self::UserUpdated { user_id, .. } => *user_id,
@@ -173,3 +176,94 @@ pub struct EventEnvelope {
     pub occurred_at: DateTime<Utc>,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn user_registered_aggregate_type_is_user() {
+        let uid = Uuid::new_v4();
+        let ev = DomainEvent::UserRegistered {
+            user_id: uid,
+            kind: "human".into(),
+        };
+        assert_eq!(ev.aggregate_type(), "user");
+        assert_eq!(ev.aggregate_id(), uid);
+        assert_eq!(ev.event_type(), "user_registered");
+    }
+
+    #[test]
+    fn artifact_created_aggregate_type_is_artifact() {
+        let aid = Uuid::new_v4();
+        let ev = DomainEvent::ArtifactCreated {
+            artifact_id: aid,
+            kind: "skill".into(),
+            namespace: "ns".into(),
+            name: "art".into(),
+            author_id: Uuid::new_v4(),
+        };
+        assert_eq!(ev.aggregate_type(), "artifact");
+        assert_eq!(ev.aggregate_id(), aid);
+        assert_eq!(ev.event_type(), "artifact_created");
+    }
+
+    #[test]
+    fn version_published_aggregate_id_is_artifact_id() {
+        let aid = Uuid::new_v4();
+        let ev = DomainEvent::VersionPublished {
+            artifact_id: aid,
+            version_id: Uuid::new_v4(),
+            version: "1.0.0".into(),
+            bump_reason: "minor".into(),
+            published_by: Uuid::new_v4(),
+        };
+        assert_eq!(ev.aggregate_id(), aid);
+        assert_eq!(ev.event_type(), "version_published");
+    }
+
+    #[test]
+    fn artifact_forked_aggregate_id_is_new_artifact() {
+        let new_id = Uuid::new_v4();
+        let ev = DomainEvent::ArtifactForked {
+            source_artifact_id: Uuid::new_v4(),
+            new_artifact_id: new_id,
+            forked_by: Uuid::new_v4(),
+        };
+        assert_eq!(ev.aggregate_id(), new_id);
+        assert_eq!(ev.event_type(), "artifact_forked");
+    }
+
+    #[test]
+    fn domain_event_serializes_with_type_tag() {
+        let ev = DomainEvent::UserUpdated {
+            user_id: Uuid::new_v4(),
+        };
+        let json = serde_json::to_value(&ev).unwrap();
+        assert_eq!(json["type"], "user_updated");
+    }
+
+    #[test]
+    fn all_social_events_are_artifact_aggregate() {
+        let aid = Uuid::new_v4();
+        let uid = Uuid::new_v4();
+        let events = vec![
+            DomainEvent::LikeAdded {
+                artifact_id: aid,
+                user_id: uid,
+            },
+            DomainEvent::LikeRemoved {
+                artifact_id: aid,
+                user_id: uid,
+            },
+            DomainEvent::RatingAdded {
+                artifact_id: aid,
+                user_id: uid,
+                score: 5,
+            },
+        ];
+        for ev in events {
+            assert_eq!(ev.aggregate_type(), "artifact");
+            assert_eq!(ev.aggregate_id(), aid);
+        }
+    }
+}

@@ -25,7 +25,9 @@ pub async fn run(args: LoginArgs, client: &HubClient) -> Result<()> {
     });
 
     let resp: serde_json::Value = client.post_json("/api/v1/auth/login", &body).await?;
-    let token = resp["access_token"].as_str().ok_or_else(|| anyhow::anyhow!("no token in response"))?;
+    let token = resp["access_token"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("no token in response"))?;
 
     let mut cfg = CliConfig::load().unwrap_or_default();
     cfg.token = Some(token.to_string());
@@ -39,4 +41,3 @@ pub async fn run(args: LoginArgs, client: &HubClient) -> Result<()> {
     );
     Ok(())
 }
-

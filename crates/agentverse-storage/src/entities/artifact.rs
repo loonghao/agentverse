@@ -67,4 +67,3 @@ impl Related<super::rating::Entity> for Entity {
 }
 
 impl ActiveModelBehavior for ActiveModel {}
-

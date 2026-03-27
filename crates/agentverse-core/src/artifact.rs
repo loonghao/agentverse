@@ -123,3 +123,102 @@ impl ArtifactVersion {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    fn make_artifact(kind: ArtifactKind, status: ArtifactStatus) -> Artifact {
+        Artifact {
+            id: Uuid::new_v4(),
+            kind,
+            namespace: "test-ns".into(),
+            name: "test-art".into(),
+            display_name: None,
+            manifest: Manifest::default(),
+            status,
+            author_id: Uuid::new_v4(),
+            downloads: 0,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    fn make_version(major: u64, minor: u64, patch: u64, pre: Option<&str>) -> ArtifactVersion {
+        ArtifactVersion {
+            id: Uuid::new_v4(),
+            artifact_id: Uuid::new_v4(),
+            version: format!("{major}.{minor}.{patch}"),
+            major,
+            minor,
+            patch,
+            pre_release: pre.map(String::from),
+            content: serde_json::Value::Null,
+            checksum: "deadbeef".into(),
+            signature: None,
+            changelog: None,
+            bump_reason: "patch".into(),
+            published_by: Uuid::new_v4(),
+            published_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn registry_id_format() {
+        let a = make_artifact(ArtifactKind::Skill, ArtifactStatus::Active);
+        assert_eq!(a.registry_id(), "skill/test-ns/test-art");
+    }
+
+    #[test]
+    fn active_artifact_is_modifiable() {
+        let a = make_artifact(ArtifactKind::Agent, ArtifactStatus::Active);
+        assert!(a.is_modifiable());
+    }
+
+    #[test]
+    fn deprecated_artifact_not_modifiable() {
+        let a = make_artifact(ArtifactKind::Prompt, ArtifactStatus::Deprecated);
+        assert!(!a.is_modifiable());
+    }
+
+    #[test]
+    fn revoked_artifact_not_modifiable() {
+        let a = make_artifact(ArtifactKind::Workflow, ArtifactStatus::Revoked);
+        assert!(!a.is_modifiable());
+    }
+
+    #[test]
+    fn artifact_kind_display_all_variants() {
+        assert_eq!(ArtifactKind::Skill.to_string(), "skill");
+        assert_eq!(ArtifactKind::Soul.to_string(), "soul");
+        assert_eq!(ArtifactKind::Agent.to_string(), "agent");
+        assert_eq!(ArtifactKind::Workflow.to_string(), "workflow");
+        assert_eq!(ArtifactKind::Prompt.to_string(), "prompt");
+    }
+
+    #[test]
+    fn semver_string_without_pre_release() {
+        let v = make_version(1, 2, 3, None);
+        assert_eq!(v.semver_string(), "1.2.3");
+    }
+
+    #[test]
+    fn semver_string_with_pre_release() {
+        let v = make_version(2, 0, 0, Some("alpha.1"));
+        assert_eq!(v.semver_string(), "2.0.0-alpha.1");
+    }
+
+    #[test]
+    fn artifact_kind_serde_round_trip() {
+        let kind = ArtifactKind::Workflow;
+        let json = serde_json::to_string(&kind).unwrap();
+        let back: ArtifactKind = serde_json::from_str(&json).unwrap();
+        assert_eq!(kind, back);
+    }
+
+    #[test]
+    fn artifact_status_default_is_active() {
+        assert_eq!(ArtifactStatus::default(), ArtifactStatus::Active);
+    }
+}

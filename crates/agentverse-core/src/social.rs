@@ -83,4 +83,3 @@ pub struct AgentInteraction {
     pub confidence_score: Option<f64>,
     pub created_at: DateTime<Utc>,
 }
-

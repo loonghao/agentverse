@@ -63,4 +63,3 @@ pub async fn run(args: RegisterArgs, client: &HubClient) -> Result<()> {
     );
     Ok(())
 }
-

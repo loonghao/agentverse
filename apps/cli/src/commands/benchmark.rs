@@ -56,4 +56,3 @@ pub async fn run(args: BenchmarkArgs, client: &HubClient) -> Result<()> {
     }
     Ok(())
 }
-

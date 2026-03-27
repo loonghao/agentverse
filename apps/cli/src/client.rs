@@ -66,7 +66,12 @@ impl HubClient {
         path: &str,
         body: &B,
     ) -> Result<T> {
-        let resp = self.post(path).json(body).send().await.context("HTTP POST failed")?;
+        let resp = self
+            .post(path)
+            .json(body)
+            .send()
+            .await
+            .context("HTTP POST failed")?;
         let status = resp.status();
         let text = resp.text().await.context("reading response body")?;
         if !status.is_success() {
@@ -81,7 +86,12 @@ impl HubClient {
         path: &str,
         body: &B,
     ) -> Result<T> {
-        let resp = self.put(path).json(body).send().await.context("HTTP PUT failed")?;
+        let resp = self
+            .put(path)
+            .json(body)
+            .send()
+            .await
+            .context("HTTP PUT failed")?;
         let status = resp.status();
         let text = resp.text().await.context("reading response body")?;
         if !status.is_success() {
@@ -92,7 +102,11 @@ impl HubClient {
 
     /// Execute a DELETE request and deserialize the response (empty body OK).
     pub async fn delete_json<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
-        let resp = self.delete(path).send().await.context("HTTP DELETE failed")?;
+        let resp = self
+            .delete(path)
+            .send()
+            .await
+            .context("HTTP DELETE failed")?;
         let status = resp.status();
         let text = resp.text().await.context("reading response body")?;
         if !status.is_success() {
@@ -100,6 +114,4 @@ impl HubClient {
         }
         serde_json::from_str(&text).context("deserialising response")
     }
-
 }
-

@@ -1,8 +1,8 @@
 use axum::{
-    Json,
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
+    Json,
 };
 use chrono::Utc;
 use serde::Deserialize;
@@ -76,7 +76,8 @@ async fn resolve_artifact(
     name: &str,
 ) -> ApiResult<Artifact> {
     let kind = parse_kind(kind_str)?;
-    state.artifacts
+    state
+        .artifacts
         .find_by_namespace_name(&kind, namespace, name)
         .await?
         .ok_or_else(|| ApiError::NotFound(format!("{kind_str}/{namespace}/{name}")))
@@ -91,11 +92,14 @@ pub async fn list_comments(
 ) -> ApiResult<impl IntoResponse> {
     let artifact = resolve_artifact(&state, &kind_str, &namespace, &name).await?;
     let comments = state.social.list_comments(artifact.id).await?;
-    Ok((StatusCode::OK, Json(serde_json::json!({
-        "artifact_id": artifact.id,
-        "comments": comments,
-        "total": comments.len(),
-    }))))
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "artifact_id": artifact.id,
+            "comments": comments,
+            "total": comments.len(),
+        })),
+    ))
 }
 
 /// POST /api/v1/:kind/:namespace/:name/comments
@@ -122,14 +126,21 @@ pub async fn add_comment(
     };
     let comment = state.social.add_comment(comment).await?;
 
-    state.events.append(DomainEvent::CommentAdded {
-        artifact_id: artifact.id,
-        comment_id: comment.id,
-        author_id: claims.sub,
-        kind: format!("{:?}", req.kind).to_lowercase(),
-    }).await.ok();
+    state
+        .events
+        .append(DomainEvent::CommentAdded {
+            artifact_id: artifact.id,
+            comment_id: comment.id,
+            author_id: claims.sub,
+            kind: format!("{:?}", req.kind).to_lowercase(),
+        })
+        .await
+        .ok();
 
-    Ok((StatusCode::CREATED, Json(serde_json::json!({ "comment": comment }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "comment": comment })),
+    ))
 }
 
 /// GET /api/v1/:kind/:namespace/:name/likes — list users who liked this artifact
@@ -139,11 +150,14 @@ pub async fn list_likes(
 ) -> ApiResult<impl IntoResponse> {
     let artifact = resolve_artifact(&state, &kind_str, &namespace, &name).await?;
     let likes = state.social.list_likes(artifact.id).await?;
-    Ok((StatusCode::OK, Json(serde_json::json!({
-        "artifact_id": artifact.id,
-        "likes": likes,
-        "total": likes.len(),
-    }))))
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "artifact_id": artifact.id,
+            "likes": likes,
+            "total": likes.len(),
+        })),
+    ))
 }
 
 /// POST /api/v1/:kind/:namespace/:name/likes
@@ -162,12 +176,19 @@ pub async fn add_like(
     };
     let like = state.social.add_like(like).await?;
 
-    state.events.append(DomainEvent::LikeAdded {
-        artifact_id: artifact.id,
-        user_id: claims.sub,
-    }).await.ok();
+    state
+        .events
+        .append(DomainEvent::LikeAdded {
+            artifact_id: artifact.id,
+            user_id: claims.sub,
+        })
+        .await
+        .ok();
 
-    Ok((StatusCode::CREATED, Json(serde_json::json!({ "like": like }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "like": like })),
+    ))
 }
 
 /// DELETE /api/v1/:kind/:namespace/:name/likes
@@ -179,12 +200,19 @@ pub async fn remove_like(
     let artifact = resolve_artifact(&state, &kind_str, &namespace, &name).await?;
     state.social.remove_like(artifact.id, claims.sub).await?;
 
-    state.events.append(DomainEvent::LikeRemoved {
-        artifact_id: artifact.id,
-        user_id: claims.sub,
-    }).await.ok();
+    state
+        .events
+        .append(DomainEvent::LikeRemoved {
+            artifact_id: artifact.id,
+            user_id: claims.sub,
+        })
+        .await
+        .ok();
 
-    Ok((StatusCode::OK, Json(serde_json::json!({ "message": "unliked" }))))
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({ "message": "unliked" })),
+    ))
 }
 
 /// POST /api/v1/:kind/:namespace/:name/ratings
@@ -209,13 +237,20 @@ pub async fn add_rating(
     };
     let rating = state.social.add_rating(rating).await?;
 
-    state.events.append(DomainEvent::RatingAdded {
-        artifact_id: artifact.id,
-        user_id: claims.sub,
-        score: req.score,
-    }).await.ok();
+    state
+        .events
+        .append(DomainEvent::RatingAdded {
+            artifact_id: artifact.id,
+            user_id: claims.sub,
+            score: req.score,
+        })
+        .await
+        .ok();
 
-    Ok((StatusCode::CREATED, Json(serde_json::json!({ "rating": rating }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "rating": rating })),
+    ))
 }
 
 /// POST /api/v1/:kind/:namespace/:name/fork — Agent or human forks an artifact
@@ -230,9 +265,15 @@ pub async fn fork_artifact(
 
     // Resolve source version content
     let source_version = match &req.source_version {
-        Some(ver) => state.versions.find_by_semver(source.id, ver).await?
+        Some(ver) => state
+            .versions
+            .find_by_semver(source.id, ver)
+            .await?
             .ok_or_else(|| ApiError::NotFound(format!("version {ver}")))?,
-        None => state.versions.find_latest(source.id).await?
+        None => state
+            .versions
+            .find_latest(source.id)
+            .await?
             .ok_or_else(|| ApiError::NotFound("no published version".into()))?,
     };
 
@@ -240,8 +281,16 @@ pub async fn fork_artifact(
     let new_kind = parse_kind(&kind_str)?;
 
     // Guard: new name must not conflict
-    if state.artifacts.find_by_namespace_name(&new_kind, &new_namespace, &req.new_name).await?.is_some() {
-        return Err(ApiError::Conflict(format!("{new_namespace}/{} already exists", req.new_name)));
+    if state
+        .artifacts
+        .find_by_namespace_name(&new_kind, &new_namespace, &req.new_name)
+        .await?
+        .is_some()
+    {
+        return Err(ApiError::Conflict(format!(
+            "{new_namespace}/{} already exists",
+            req.new_name
+        )));
     }
 
     let now = Utc::now();
@@ -267,12 +316,17 @@ pub async fn fork_artifact(
         id: Uuid::new_v4(),
         artifact_id: forked_artifact.id,
         version: "0.1.0".into(),
-        major: 0, minor: 1, patch: 0,
+        major: 0,
+        minor: 1,
+        patch: 0,
         pre_release: None,
         content: source_version.content.clone(),
         checksum: sha256_hex(&content_bytes),
         signature: None,
-        changelog: Some(format!("Forked from {}/{}/{}", kind_str, source.namespace, source.name)),
+        changelog: Some(format!(
+            "Forked from {}/{}/{}",
+            kind_str, source.namespace, source.name
+        )),
         bump_reason: "minor".into(),
         published_by: claims.sub,
         published_at: now,
@@ -292,16 +346,23 @@ pub async fn fork_artifact(
     };
     state.social.record_interaction(interaction).await.ok();
 
-    state.events.append(DomainEvent::ArtifactForked {
-        source_artifact_id: source.id,
-        new_artifact_id: forked_artifact.id,
-        forked_by: claims.sub,
-    }).await.ok();
+    state
+        .events
+        .append(DomainEvent::ArtifactForked {
+            source_artifact_id: source.id,
+            new_artifact_id: forked_artifact.id,
+            forked_by: claims.sub,
+        })
+        .await
+        .ok();
 
-    Ok((StatusCode::CREATED, Json(serde_json::json!({
-        "artifact": forked_artifact,
-        "version": forked_version,
-    }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({
+            "artifact": forked_artifact,
+            "version": forked_version,
+        })),
+    ))
 }
 
 /// POST /api/v1/:kind/:namespace/:name/learn — Agent submits a learning insight
@@ -337,19 +398,28 @@ pub async fn record_learning(
         artifact_id: artifact.id,
         version_id: req.version_id,
         kind: InteractionKind::Learn,
-        payload: req.payload.unwrap_or(serde_json::json!({ "content": req.content })),
+        payload: req
+            .payload
+            .unwrap_or(serde_json::json!({ "content": req.content })),
         confidence_score: req.confidence_score,
         created_at: now,
     };
     state.social.record_interaction(interaction).await.ok();
 
-    state.events.append(DomainEvent::AgentLearned {
-        agent_id: claims.sub,
-        artifact_id: artifact.id,
-        confidence_score: req.confidence_score,
-    }).await.ok();
+    state
+        .events
+        .append(DomainEvent::AgentLearned {
+            agent_id: claims.sub,
+            artifact_id: artifact.id,
+            confidence_score: req.confidence_score,
+        })
+        .await
+        .ok();
 
-    Ok((StatusCode::CREATED, Json(serde_json::json!({ "comment": comment }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "comment": comment })),
+    ))
 }
 
 /// DELETE /api/v1/:kind/:namespace/:name/comments/:comment_id
@@ -359,15 +429,25 @@ pub async fn delete_comment(
     AuthUser(claims): AuthUser,
 ) -> ApiResult<impl IntoResponse> {
     let artifact = resolve_artifact(&state, &kind_str, &namespace, &name).await?;
-    state.social.delete_comment(comment_id, artifact.id, claims.sub).await?;
+    state
+        .social
+        .delete_comment(comment_id, artifact.id, claims.sub)
+        .await?;
 
-    state.events.append(DomainEvent::CommentDeleted {
-        comment_id,
-        artifact_id: artifact.id,
-        deleted_by: claims.sub,
-    }).await.ok();
+    state
+        .events
+        .append(DomainEvent::CommentDeleted {
+            comment_id,
+            artifact_id: artifact.id,
+            deleted_by: claims.sub,
+        })
+        .await
+        .ok();
 
-    Ok((StatusCode::OK, Json(serde_json::json!({ "message": "comment deleted" }))))
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({ "message": "comment deleted" })),
+    ))
 }
 
 /// PUT /api/v1/:kind/:namespace/:name/comments/:comment_id
@@ -378,17 +458,25 @@ pub async fn update_comment(
     Json(req): Json<UpdateCommentRequest>,
 ) -> ApiResult<impl IntoResponse> {
     let artifact = resolve_artifact(&state, &kind_str, &namespace, &name).await?;
-    let comment = state.social
+    let comment = state
+        .social
         .update_comment(comment_id, artifact.id, claims.sub, req.content)
         .await?;
 
-    state.events.append(DomainEvent::CommentUpdated {
-        comment_id,
-        artifact_id: artifact.id,
-        updated_by: claims.sub,
-    }).await.ok();
+    state
+        .events
+        .append(DomainEvent::CommentUpdated {
+            comment_id,
+            artifact_id: artifact.id,
+            updated_by: claims.sub,
+        })
+        .await
+        .ok();
 
-    Ok((StatusCode::OK, Json(serde_json::json!({ "comment": comment }))))
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({ "comment": comment })),
+    ))
 }
 
 /// GET /api/v1/:kind/:namespace/:name/ratings — list all ratings
@@ -398,11 +486,14 @@ pub async fn list_ratings(
 ) -> ApiResult<impl IntoResponse> {
     let artifact = resolve_artifact(&state, &kind_str, &namespace, &name).await?;
     let ratings = state.social.list_ratings(artifact.id).await?;
-    Ok((StatusCode::OK, Json(serde_json::json!({
-        "artifact_id": artifact.id,
-        "ratings": ratings,
-        "total": ratings.len(),
-    }))))
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "artifact_id": artifact.id,
+            "ratings": ratings,
+            "total": ratings.len(),
+        })),
+    ))
 }
 
 /// GET /api/v1/:kind/:namespace/:name/stats — aggregate statistics for an artifact
@@ -413,15 +504,18 @@ pub async fn artifact_stats(
     let artifact = resolve_artifact(&state, &kind_str, &namespace, &name).await?;
     let stats = state.social.get_stats(artifact.id).await?;
 
-    Ok((StatusCode::OK, Json(serde_json::json!({
-        "artifact_id":        artifact.id,
-        "downloads":          artifact.downloads,
-        "likes_count":        stats.likes_count,
-        "comments_count":     stats.comments_count,
-        "ratings_count":      stats.ratings_count,
-        "avg_rating":         stats.avg_rating,
-        "interactions_count": stats.interactions_count,
-    }))))
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "artifact_id":        artifact.id,
+            "downloads":          artifact.downloads,
+            "likes_count":        stats.likes_count,
+            "comments_count":     stats.comments_count,
+            "ratings_count":      stats.ratings_count,
+            "avg_rating":         stats.avg_rating,
+            "interactions_count": stats.interactions_count,
+        })),
+    ))
 }
 
 /// GET /api/v1/:kind/:namespace/:name/interactions — list all agent interactions
@@ -431,11 +525,14 @@ pub async fn list_interactions(
 ) -> ApiResult<impl IntoResponse> {
     let artifact = resolve_artifact(&state, &kind_str, &namespace, &name).await?;
     let interactions = state.social.list_interactions(artifact.id).await?;
-    Ok((StatusCode::OK, Json(serde_json::json!({
-        "artifact_id": artifact.id,
-        "interactions": interactions,
-        "total": interactions.len(),
-    }))))
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "artifact_id": artifact.id,
+            "interactions": interactions,
+            "total": interactions.len(),
+        })),
+    ))
 }
 
 /// POST /api/v1/:kind/:namespace/:name/tags — add a tag to an artifact's manifest
@@ -460,7 +557,9 @@ pub async fn add_tag(
     let mut artifact = resolve_artifact(&state, &kind_str, &namespace, &name).await?;
 
     if artifact.author_id != claims.sub {
-        return Err(ApiError::Forbidden("only the author can manage tags".into()));
+        return Err(ApiError::Forbidden(
+            "only the author can manage tags".into(),
+        ));
     }
 
     // Idempotent insert
@@ -470,10 +569,13 @@ pub async fn add_tag(
         state.artifacts.update(artifact.clone()).await?;
     }
 
-    Ok((StatusCode::OK, Json(serde_json::json!({
-        "tags": artifact.manifest.tags,
-        "added": tag,
-    }))))
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "tags": artifact.manifest.tags,
+            "added": tag,
+        })),
+    ))
 }
 
 /// DELETE /api/v1/:kind/:namespace/:name/tags/:tag — remove a tag from an artifact's manifest
@@ -485,7 +587,9 @@ pub async fn remove_tag(
     let mut artifact = resolve_artifact(&state, &kind_str, &namespace, &name).await?;
 
     if artifact.author_id != claims.sub {
-        return Err(ApiError::Forbidden("only the author can manage tags".into()));
+        return Err(ApiError::Forbidden(
+            "only the author can manage tags".into(),
+        ));
     }
 
     let before_len = artifact.manifest.tags.len();
@@ -496,10 +600,13 @@ pub async fn remove_tag(
         state.artifacts.update(artifact.clone()).await?;
     }
 
-    Ok((StatusCode::OK, Json(serde_json::json!({
-        "tags": artifact.manifest.tags,
-        "removed": tag,
-    }))))
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "tags": artifact.manifest.tags,
+            "removed": tag,
+        })),
+    ))
 }
 
 /// POST /api/v1/:kind/:namespace/:name/benchmark — Agent submits benchmark results
@@ -541,13 +648,18 @@ pub async fn record_benchmark(
     };
     state.social.record_interaction(interaction).await.ok();
 
-    state.events.append(DomainEvent::AgentBenchmarked {
-        agent_id: claims.sub,
-        artifact_id: artifact.id,
-        version_id: req.version_id,
-    }).await.ok();
+    state
+        .events
+        .append(DomainEvent::AgentBenchmarked {
+            agent_id: claims.sub,
+            artifact_id: artifact.id,
+            version_id: req.version_id,
+        })
+        .await
+        .ok();
 
-    Ok((StatusCode::CREATED, Json(serde_json::json!({ "comment": comment }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "comment": comment })),
+    ))
 }
-
-

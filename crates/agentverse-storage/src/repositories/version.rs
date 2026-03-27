@@ -1,10 +1,9 @@
 use async_trait::async_trait;
+use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait,
-    QueryFilter, QueryOrder,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
 };
 use uuid::Uuid;
-use chrono::Utc;
 
 use agentverse_core::{
     artifact::ArtifactVersion,
@@ -12,14 +11,15 @@ use agentverse_core::{
     repository::VersionRepository,
 };
 
+use crate::connection::DatabasePool;
 use crate::entities::artifact_version::{self, Entity as VersionEntity};
 
 pub struct VersionRepo {
-    pub db: DatabaseConnection,
+    pub db: DatabasePool,
 }
 
 impl VersionRepo {
-    pub fn new(db: DatabaseConnection) -> Self {
+    pub fn new(db: DatabasePool) -> Self {
         Self { db }
     }
 }
@@ -108,4 +108,3 @@ impl VersionRepository for VersionRepo {
             .map_err(|e| CoreError::Storage(StorageError(e.to_string())))
     }
 }
-
