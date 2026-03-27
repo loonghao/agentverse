@@ -36,9 +36,7 @@ pub async fn run(args: DeprecateArgs, client: &HubClient) -> Result<()> {
     }
 
     let path = format!("/api/v1/{kind_str}/{ns}/{name}/deprecate");
-    let resp: serde_json::Value = client
-        .post_json(&path, &serde_json::json!({}))
-        .await?;
+    let resp: serde_json::Value = client.post_json(&path, &serde_json::json!({})).await?;
 
     println!(
         "\n{} {} deprecated\n",
@@ -47,4 +45,3 @@ pub async fn run(args: DeprecateArgs, client: &HubClient) -> Result<()> {
     );
     Ok(())
 }
-

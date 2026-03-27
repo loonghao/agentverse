@@ -29,7 +29,9 @@ pub async fn run(args: LearnArgs, client: &HubClient) -> Result<()> {
     }
     let (kind_str, ns, name) = (parts[0], parts[1], parts[2]);
 
-    let payload: Option<serde_json::Value> = args.payload.as_deref()
+    let payload: Option<serde_json::Value> = args
+        .payload
+        .as_deref()
         .map(|s| serde_json::from_str(s))
         .transpose()
         .map_err(|e| anyhow::anyhow!("invalid --payload JSON: {e}"))?;
@@ -53,4 +55,3 @@ pub async fn run(args: LearnArgs, client: &HubClient) -> Result<()> {
     );
     Ok(())
 }
-

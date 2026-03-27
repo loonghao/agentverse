@@ -40,4 +40,3 @@ pub enum CoreError {
 #[derive(Debug, Error)]
 #[error("{0}")]
 pub struct StorageError(pub String);
-

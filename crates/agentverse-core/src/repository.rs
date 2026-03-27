@@ -49,10 +49,8 @@ pub trait VersionRepository: Send + Sync {
         artifact_id: Uuid,
         version: &str,
     ) -> Result<Option<ArtifactVersion>, CoreError>;
-    async fn list_for_artifact(
-        &self,
-        artifact_id: Uuid,
-    ) -> Result<Vec<ArtifactVersion>, CoreError>;
+    async fn list_for_artifact(&self, artifact_id: Uuid)
+        -> Result<Vec<ArtifactVersion>, CoreError>;
 }
 
 /// Aggregate statistics for a single artifact.
@@ -110,4 +108,3 @@ pub trait UserRepository: Send + Sync {
     async fn find_by_username(&self, username: &str) -> Result<Option<User>, CoreError>;
     async fn find_by_email(&self, email: &str) -> Result<Option<User>, CoreError>;
 }
-

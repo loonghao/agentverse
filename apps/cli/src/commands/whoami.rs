@@ -16,8 +16,14 @@ pub async fn run(args: WhoamiArgs, client: &HubClient) -> Result<()> {
 
     let user = &resp["user"];
     println!("\n{} Authenticated as:\n", "👤".bold());
-    println!("  Username : {}", user["username"].as_str().unwrap_or("?").bold());
-    println!("  ID       : {}", user["id"].as_str().unwrap_or("?").dimmed());
+    println!(
+        "  Username : {}",
+        user["username"].as_str().unwrap_or("?").bold()
+    );
+    println!(
+        "  ID       : {}",
+        user["id"].as_str().unwrap_or("?").dimmed()
+    );
     println!("  Kind     : {}", user["kind"].as_str().unwrap_or("?"));
     if let Some(email) = user["email"].as_str() {
         println!("  Email    : {email}");
@@ -38,4 +44,3 @@ pub async fn run(args: WhoamiArgs, client: &HubClient) -> Result<()> {
     println!();
     Ok(())
 }
-

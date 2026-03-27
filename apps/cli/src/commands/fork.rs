@@ -24,7 +24,10 @@ pub async fn run(args: ForkArgs, client: &HubClient) -> Result<()> {
     };
     let parts: Vec<&str> = base.splitn(3, '/').collect();
     if parts.len() != 3 {
-        anyhow::bail!("source must be kind/namespace/name[@version], got: {}", args.source);
+        anyhow::bail!(
+            "source must be kind/namespace/name[@version], got: {}",
+            args.source
+        );
     }
 
     let path = format!("/api/v1/{}/{}/{}/fork", parts[0], parts[1], parts[2]);
@@ -38,10 +41,16 @@ pub async fn run(args: ForkArgs, client: &HubClient) -> Result<()> {
     println!(
         "\n{} Forked {}/{}/{} → {}\n",
         "✓".green().bold(),
-        parts[0], parts[1], parts[2],
+        parts[0],
+        parts[1],
+        parts[2],
         args.new_name.green().bold(),
     );
-    println!("  {}", serde_json::to_string_pretty(&resp).unwrap_or_default().dimmed());
+    println!(
+        "  {}",
+        serde_json::to_string_pretty(&resp)
+            .unwrap_or_default()
+            .dimmed()
+    );
     Ok(())
 }
-

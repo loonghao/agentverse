@@ -46,17 +46,24 @@ pub async fn run(args: PublishArgs, client: &HubClient) -> Result<()> {
     let raw = std::fs::read_to_string(&args.manifest)
         .with_context(|| format!("reading {}", args.manifest.display()))?;
 
-    let mf: ManifestFile = if args.manifest.extension().map(|e| e == "toml").unwrap_or(false) {
+    let mf: ManifestFile = if args
+        .manifest
+        .extension()
+        .map(|e| e == "toml")
+        .unwrap_or(false)
+    {
         toml::from_str(&raw).context("parsing TOML manifest")?
     } else {
         serde_json::from_str(&raw).context("parsing JSON manifest")?
     };
 
     // Load content file
-    let content_path = args
-        .content
-        .unwrap_or_else(|| args.manifest.parent().unwrap_or(std::path::Path::new("."))
-            .join("content.json"));
+    let content_path = args.content.unwrap_or_else(|| {
+        args.manifest
+            .parent()
+            .unwrap_or(std::path::Path::new("."))
+            .join("content.json")
+    });
     let content: serde_json::Value = if content_path.exists() {
         let raw = std::fs::read_to_string(&content_path)
             .with_context(|| format!("reading {}", content_path.display()))?;
@@ -102,7 +109,8 @@ pub async fn run(args: PublishArgs, client: &HubClient) -> Result<()> {
         Err(e) => return Err(e),
     };
 
-    let ver = resp["version"]["version"].as_str()
+    let ver = resp["version"]["version"]
+        .as_str()
         .or_else(|| resp["bump"].as_str())
         .unwrap_or("?");
 
@@ -116,4 +124,3 @@ pub async fn run(args: PublishArgs, client: &HubClient) -> Result<()> {
     );
     Ok(())
 }
-

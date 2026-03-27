@@ -70,4 +70,3 @@ pub async fn run(args: SearchArgs, client: &HubClient) -> Result<()> {
 fn urlenccode(s: &str) -> String {
     s.replace(' ', "+")
 }
-

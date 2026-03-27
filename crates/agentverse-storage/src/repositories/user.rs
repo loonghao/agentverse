@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
 use agentverse_core::{
@@ -9,14 +9,15 @@ use agentverse_core::{
     user::{User, UserKind},
 };
 
+use crate::connection::DatabasePool;
 use crate::entities::user::{self, Entity as UserEntity};
 
 pub struct UserRepo {
-    pub db: DatabaseConnection,
+    pub db: DatabasePool,
 }
 
 impl UserRepo {
-    pub fn new(db: DatabaseConnection) -> Self {
+    pub fn new(db: DatabasePool) -> Self {
         Self { db }
     }
 }
@@ -114,4 +115,3 @@ impl UserRepository for UserRepo {
             .map_err(|e| CoreError::Storage(StorageError(e.to_string())))
     }
 }
-

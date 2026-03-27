@@ -12,8 +12,7 @@ pub struct CliConfig {
 
 impl CliConfig {
     pub fn path() -> PathBuf {
-        let base = dirs_next::config_dir()
-            .unwrap_or_else(|| PathBuf::from("."));
+        let base = dirs_next::config_dir().unwrap_or_else(|| PathBuf::from("."));
         base.join("agentverse").join("config.toml")
     }
 
@@ -36,4 +35,3 @@ impl CliConfig {
         Ok(())
     }
 }
-

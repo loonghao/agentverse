@@ -10,7 +10,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "agentverse"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -31,17 +31,20 @@ dependencies = [
 
 [[package]]
 name = "agentverse-api"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "agentverse-auth",
  "agentverse-core",
  "agentverse-events",
  "agentverse-search",
+ "agentverse-storage",
  "agentverse-versioning",
  "anyhow",
  "async-trait",
  "axum 0.8.8",
  "chrono",
+ "http-body-util",
+ "sea-orm",
  "serde",
  "serde_json",
  "sha2",
@@ -58,7 +61,7 @@ dependencies = [
 
 [[package]]
 name = "agentverse-auth"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "agentverse-core",
  "argon2",
@@ -77,7 +80,7 @@ dependencies = [
 
 [[package]]
 name = "agentverse-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -91,9 +94,10 @@ dependencies = [
 
 [[package]]
 name = "agentverse-events"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "agentverse-core",
+ "agentverse-storage",
  "async-trait",
  "chrono",
  "sea-orm",
@@ -107,9 +111,10 @@ dependencies = [
 
 [[package]]
 name = "agentverse-search"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "agentverse-core",
+ "agentverse-storage",
  "async-trait",
  "chrono",
  "sea-orm",
@@ -124,7 +129,7 @@ dependencies = [
 
 [[package]]
 name = "agentverse-server"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "agentverse-api",
  "agentverse-auth",
@@ -148,7 +153,7 @@ dependencies = [
 
 [[package]]
 name = "agentverse-social"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "agentverse-core",
  "async-trait",
@@ -162,7 +167,7 @@ dependencies = [
 
 [[package]]
 name = "agentverse-storage"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "agentverse-core",
  "async-trait",
@@ -178,7 +183,7 @@ dependencies = [
 
 [[package]]
 name = "agentverse-versioning"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "agentverse-core",
  "async-trait",

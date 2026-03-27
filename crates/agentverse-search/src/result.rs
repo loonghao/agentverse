@@ -13,4 +13,3 @@ pub struct SearchResult {
     pub score: f64,
     pub downloads: i64,
 }
-

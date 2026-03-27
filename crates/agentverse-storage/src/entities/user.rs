@@ -37,4 +37,3 @@ impl Related<super::comment::Entity> for Entity {
 }
 
 impl ActiveModelBehavior for ActiveModel {}
-

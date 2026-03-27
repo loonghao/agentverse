@@ -4,8 +4,11 @@ pub mod health;
 pub mod social;
 pub mod versions;
 
-use axum::{Router, routing::{get, post, put}};
 use crate::state::AppState;
+use axum::{
+    routing::{get, post, put},
+    Router,
+};
 
 /// Build the complete API router.
 /// Returns `Router<AppState>` — caller must call `.with_state(state)` to finalise.
@@ -26,7 +29,10 @@ fn auth_routes() -> Router<AppState> {
         // Public user profiles — accessible without authentication
         .route("/api/v1/users/{id_or_username}", get(auth::get_user))
         // List artifacts published by a user
-        .route("/api/v1/users/{id_or_username}/artifacts", get(auth::list_user_artifacts))
+        .route(
+            "/api/v1/users/{id_or_username}/artifacts",
+            get(auth::list_user_artifacts),
+        )
 }
 
 fn artifact_routes() -> Router<AppState> {
@@ -35,17 +41,34 @@ fn artifact_routes() -> Router<AppState> {
         .route("/api/v1/search", get(artifacts::search_artifacts))
         .route("/api/v1/search/semantic", post(artifacts::semantic_search))
         // List + Create by kind
-        .route("/api/v1/{kind}", get(artifacts::list_artifacts).post(artifacts::create_artifact))
+        .route(
+            "/api/v1/{kind}",
+            get(artifacts::list_artifacts).post(artifacts::create_artifact),
+        )
         // Version management
-        .route("/api/v1/{kind}/{namespace}/{name}/versions", get(versions::list_versions))
-        .route("/api/v1/{kind}/{namespace}/{name}/publish", post(versions::publish_version))
-        .route("/api/v1/{kind}/{namespace}/{name}/deprecate", post(versions::deprecate_version))
+        .route(
+            "/api/v1/{kind}/{namespace}/{name}/versions",
+            get(versions::list_versions),
+        )
+        .route(
+            "/api/v1/{kind}/{namespace}/{name}/publish",
+            post(versions::publish_version),
+        )
+        .route(
+            "/api/v1/{kind}/{namespace}/{name}/deprecate",
+            post(versions::deprecate_version),
+        )
         // Revoke (security incident — harder than deprecate)
-        .route("/api/v1/{kind}/{namespace}/{name}/revoke", post(artifacts::revoke_artifact))
+        .route(
+            "/api/v1/{kind}/{namespace}/{name}/revoke",
+            post(artifacts::revoke_artifact),
+        )
         // Social — likes
         .route(
             "/api/v1/{kind}/{namespace}/{name}/likes",
-            get(social::list_likes).post(social::add_like).delete(social::remove_like),
+            get(social::list_likes)
+                .post(social::add_like)
+                .delete(social::remove_like),
         )
         // Social — comments (collection)
         .route(
@@ -63,18 +86,42 @@ fn artifact_routes() -> Router<AppState> {
             get(social::list_ratings).post(social::add_rating),
         )
         // Social — agent interactions
-        .route("/api/v1/{kind}/{namespace}/{name}/interactions", get(social::list_interactions))
+        .route(
+            "/api/v1/{kind}/{namespace}/{name}/interactions",
+            get(social::list_interactions),
+        )
         // Aggregate stats
-        .route("/api/v1/{kind}/{namespace}/{name}/stats", get(social::artifact_stats))
+        .route(
+            "/api/v1/{kind}/{namespace}/{name}/stats",
+            get(social::artifact_stats),
+        )
         // Tag management
-        .route("/api/v1/{kind}/{namespace}/{name}/tags", post(social::add_tag))
-        .route("/api/v1/{kind}/{namespace}/{name}/tags/{tag}", axum::routing::delete(social::remove_tag))
+        .route(
+            "/api/v1/{kind}/{namespace}/{name}/tags",
+            post(social::add_tag),
+        )
+        .route(
+            "/api/v1/{kind}/{namespace}/{name}/tags/{tag}",
+            axum::routing::delete(social::remove_tag),
+        )
         // Embedding update (for semantic search)
-        .route("/api/v1/{kind}/{namespace}/{name}/embedding", post(artifacts::update_embedding))
+        .route(
+            "/api/v1/{kind}/{namespace}/{name}/embedding",
+            post(artifacts::update_embedding),
+        )
         // Agent-specific actions
-        .route("/api/v1/{kind}/{namespace}/{name}/fork", post(social::fork_artifact))
-        .route("/api/v1/{kind}/{namespace}/{name}/learn", post(social::record_learning))
-        .route("/api/v1/{kind}/{namespace}/{name}/benchmark", post(social::record_benchmark))
+        .route(
+            "/api/v1/{kind}/{namespace}/{name}/fork",
+            post(social::fork_artifact),
+        )
+        .route(
+            "/api/v1/{kind}/{namespace}/{name}/learn",
+            post(social::record_learning),
+        )
+        .route(
+            "/api/v1/{kind}/{namespace}/{name}/benchmark",
+            post(social::record_benchmark),
+        )
         // Artifact CRUD (must come after sub-path routes)
         .route(
             "/api/v1/{kind}/{namespace}/{name}",
@@ -88,4 +135,3 @@ fn artifact_routes() -> Router<AppState> {
             get(artifacts::get_artifact_version),
         )
 }
-

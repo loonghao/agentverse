@@ -17,4 +17,6 @@ fmt = "vx cargo fmt --all"
 fmt-check = "vx cargo fmt --all -- --check"
 lint = "vx cargo clippy --workspace --all-targets -- -D warnings"
 test = "vx cargo test --workspace"
+coverage = "vx cargo llvm-cov --workspace --lcov --output-path lcov.info"
+coverage-html = "vx cargo llvm-cov --workspace --html"
 

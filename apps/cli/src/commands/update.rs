@@ -34,8 +34,8 @@ pub async fn run(args: UpdateArgs, client: &HubClient) -> Result<()> {
 
     // Load content if path provided
     let content: Option<serde_json::Value> = if let Some(ref path) = args.content {
-        let raw = std::fs::read_to_string(path)
-            .with_context(|| format!("reading {}", path.display()))?;
+        let raw =
+            std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
         Some(serde_json::from_str(&raw).context("parsing content JSON")?)
     } else {
         None
@@ -43,8 +43,8 @@ pub async fn run(args: UpdateArgs, client: &HubClient) -> Result<()> {
 
     // Load manifest if path provided
     let manifest: Option<serde_json::Value> = if let Some(ref path) = args.manifest {
-        let raw = std::fs::read_to_string(path)
-            .with_context(|| format!("reading {}", path.display()))?;
+        let raw =
+            std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
         let val: serde_json::Value = if path.extension().map(|e| e == "toml").unwrap_or(false) {
             toml::from_str::<serde_json::Value>(&raw).context("parsing TOML manifest")?
         } else {
@@ -81,4 +81,3 @@ pub async fn run(args: UpdateArgs, client: &HubClient) -> Result<()> {
     );
     Ok(())
 }
-

@@ -4,18 +4,19 @@
 //! Vectors should be generated externally (e.g. by a sidecar or via an AI model call)
 //! and stored via `update_embedding()`.  The search here uses cosine distance.
 
-use sea_orm::{DatabaseConnection, FromQueryResult, Statement};
 use agentverse_core::error::{CoreError, StorageError};
+use agentverse_storage::DatabasePool;
+use sea_orm::{FromQueryResult, Statement};
 use uuid::Uuid;
 
 use crate::result::SearchResult;
 
 pub struct SemanticSearch {
-    db: DatabaseConnection,
+    db: DatabasePool,
 }
 
 impl SemanticSearch {
-    pub fn new(db: DatabaseConnection) -> Self {
+    pub fn new(db: DatabasePool) -> Self {
         Self { db }
     }
 
@@ -125,4 +126,3 @@ impl SemanticSearch {
         })
     }
 }
-

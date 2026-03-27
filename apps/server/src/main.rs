@@ -9,11 +9,15 @@ use tower_http::{
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-use agentverse_api::{mcp::mcp_handler, routes::build_router, state::{AppConfig, AppState}};
+use agentverse_api::{
+    mcp::mcp_handler,
+    routes::build_router,
+    state::{AppConfig, AppState},
+};
 use agentverse_auth::JwtManager;
 use agentverse_events::EventStore;
 use agentverse_search::{FullTextSearch, SemanticSearch};
-use agentverse_storage::{Database, ArtifactRepo, VersionRepo, SocialRepo, UserRepo};
+use agentverse_storage::{ArtifactRepo, Database, SocialRepo, UserRepo, VersionRepo};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -26,14 +30,20 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let port: u16 = std::env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8080);
-    let database_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://agentverse:agentverse_dev@localhost:5432/agentverse".into());
-    let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "dev-secret-change-in-production".into());
+    let port: u16 = std::env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(8080);
+    let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+        "postgres://agentverse:agentverse_dev@localhost:5432/agentverse".into()
+    });
+    let jwt_secret =
+        std::env::var("JWT_SECRET").unwrap_or_else(|_| "dev-secret-change-in-production".into());
 
     // Connect to PostgreSQL
     tracing::info!("connecting to database…");
-    let db = Database::connect(&database_url).await
+    let db = Database::connect(&database_url)
+        .await
         .map_err(|e| anyhow::anyhow!("DB connect failed: {e}"))?;
     tracing::info!("database connected");
 
@@ -54,19 +64,27 @@ async fn main() -> anyhow::Result<()> {
 
     let state = AppState {
         artifacts: Arc::new(ArtifactRepo::new(db.clone())),
-        versions:  Arc::new(VersionRepo::new(db.clone())),
-        social:    Arc::new(SocialRepo::new(db.clone())),
-        users:     Arc::new(UserRepo::new(db.clone())),
-        events:    Arc::new(EventStore::new(db.clone())),
-        fulltext:  Arc::new(FullTextSearch::new(db.clone())),
-        semantic:  Arc::new(SemanticSearch::new(db.clone())),
-        jwt:       Arc::new(JwtManager::new(&jwt_secret, config.access_token_expiry_secs)),
-        config:    Arc::new(config),
+        versions: Arc::new(VersionRepo::new(db.clone())),
+        social: Arc::new(SocialRepo::new(db.clone())),
+        users: Arc::new(UserRepo::new(db.clone())),
+        events: Arc::new(EventStore::new(db.clone())),
+        fulltext: Arc::new(FullTextSearch::new(db.clone())),
+        semantic: Arc::new(SemanticSearch::new(db.clone())),
+        jwt: Arc::new(JwtManager::new(
+            &jwt_secret,
+            config.access_token_expiry_secs,
+        )),
+        config: Arc::new(config),
     };
 
     let app = build_router(state.clone())
         .route("/mcp", post(mcp_handler))
-        .layer(CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any))
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods(Any)
+                .allow_headers(Any),
+        )
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 
