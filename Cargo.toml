@@ -1,0 +1,104 @@
+[workspace]
+resolver = "2"
+members = [
+    "apps/server",
+    "apps/cli",
+    "crates/agentverse-core",
+    "crates/agentverse-storage",
+    "crates/agentverse-api",
+    "crates/agentverse-auth",
+    "crates/agentverse-versioning",
+    "crates/agentverse-social",
+    "crates/agentverse-search",
+    "crates/agentverse-events",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["loonghao <hal.long@outlook.com>"]
+license = "MIT"
+repository = "https://github.com/loonghao/agentverse"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Web framework
+axum = { version = "0.8", features = ["json", "multipart", "ws", "macros"] }
+tower = { version = "0.5" }
+tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip", "request-id"] }
+hyper = { version = "1" }
+
+# Database - SeaORM + SQLx
+sea-orm = { version = "1", features = [
+    "sqlx-postgres",
+    "runtime-tokio-rustls",
+    "macros",
+    "with-uuid",
+    "with-chrono",
+    "with-json",
+    "with-rust_decimal",
+] }
+sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls", "uuid", "chrono", "json", "migrate"] }
+
+# Redis
+deadpool-redis = { version = "0.18" }
+redis = { version = "0.27", features = ["tokio-comp", "json"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1" }
+toml = { version = "0.8" }
+
+# Auth
+jsonwebtoken = { version = "9" }
+argon2 = { version = "0.5" }
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand = { version = "0.8" }
+
+# Versioning
+semver = { version = "1", features = ["serde"] }
+
+# Observability
+tracing = { version = "0.1" }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+opentelemetry = { version = "0.27" }
+
+# Error handling
+thiserror = { version = "2" }
+anyhow = { version = "1" }
+
+# Utils
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+async-trait = { version = "0.1" }
+validator = { version = "0.19", features = ["derive"] }
+
+# OpenAPI
+utoipa = { version = "5", features = ["axum_extras", "uuid", "chrono"] }
+utoipa-swagger-ui = { version = "8", features = ["axum"] }
+
+# GraphQL
+async-graphql = { version = "7", features = ["uuid", "chrono", "tracing"] }
+async-graphql-axum = { version = "7" }
+
+# Config
+config = { version = "0.14" }
+dotenvy = { version = "0.15" }
+
+# Internal crates
+agentverse-core = { path = "crates/agentverse-core" }
+agentverse-storage = { path = "crates/agentverse-storage" }
+agentverse-api = { path = "crates/agentverse-api" }
+agentverse-auth = { path = "crates/agentverse-auth" }
+agentverse-versioning = { path = "crates/agentverse-versioning" }
+agentverse-social = { path = "crates/agentverse-social" }
+agentverse-search = { path = "crates/agentverse-search" }
+agentverse-events = { path = "crates/agentverse-events" }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+

@@ -1,0 +1,45 @@
+name: Sync Skills to ClawHub
+
+on:
+  push:
+    branches: [main]
+    paths: ["skills/**"]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync-skills:
+    runs-on: ubuntu-latest
+    if: github.repository == 'loonghao/agentverse'
+    steps:
+      - uses: actions/checkout@v6
+      - name: Package skills
+        run: |
+          cd skills && zip -r ../agentverse-skills.zip . && cd ..
+          echo "Packaged: $(ls -lh agentverse-skills.zip)"
+      - name: Upload skill artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: agentverse-skills
+          path: agentverse-skills.zip
+          retention-days: 30
+      - name: Sync to ClawHub
+        env:
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+        run: |
+          if [ -z "$CLAWHUB_TOKEN" ]; then
+            echo "CLAWHUB_TOKEN not set, skipping sync"
+            exit 0
+          fi
+          curl -f -X POST \
+            -H "Authorization: Bearer $CLAWHUB_TOKEN" \
+            -H "Content-Type: multipart/form-data" \
+            -F "skill=@agentverse-skills.zip" \
+            -F "name=agentverse" \
+            -F "repository=loonghao/agentverse" \
+            "https://api.clawhub.ai/v1/skills/publish" \
+            && echo "Synced to ClawHub" || echo "ClawHub sync failed (non-fatal)"

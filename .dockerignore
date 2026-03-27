@@ -1,0 +1,24 @@
+# Rust build artifacts – MUST be excluded to keep the Docker build context small.
+# Without this, Docker uploads the entire multi-GB target/ directory.
+target/
+
+# Git
+.git/
+.gitignore
+
+# Local dev config
+.env
+*.env.local
+
+# Editor / OS noise
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# CI / docs that are not needed in the image
+.github/
+docs/
+*.md
+

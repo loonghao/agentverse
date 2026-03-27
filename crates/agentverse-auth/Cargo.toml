@@ -1,0 +1,20 @@
+[package]
+name = "agentverse-auth"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+agentverse-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+jsonwebtoken = { workspace = true }
+argon2 = { workspace = true }
+ed25519-dalek = { workspace = true }
+rand = { workspace = true }
+hex = "0.4"
+

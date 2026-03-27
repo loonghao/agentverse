@@ -1,0 +1,30 @@
+[package]
+name = "agentverse-api"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+agentverse-core = { workspace = true }
+agentverse-versioning = { workspace = true }
+agentverse-auth = { workspace = true }
+agentverse-events = { workspace = true }
+agentverse-search = { workspace = true }
+
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+validator = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+utoipa = { workspace = true }
+utoipa-swagger-ui = { workspace = true }
+sha2 = "0.10"

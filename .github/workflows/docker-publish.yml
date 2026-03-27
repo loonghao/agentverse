@@ -1,0 +1,106 @@
+name: Docker Publish
+
+on:
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (e.g., v1.0.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  GHCR_REPO: ghcr.io/loonghao/agentverse
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Get version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "version_short=${VERSION#v}" >> $GITHUB_OUTPUT
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract platform suffix
+        id: platform
+        shell: bash
+        run: |
+          echo "suffix=$(echo '${{ matrix.platform }}' | tr '/' '-')" >> $GITHUB_OUTPUT
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: ${{ matrix.platform }}
+          push: true
+          provenance: false
+          tags: |
+            ${{ env.GHCR_REPO }}:${{ steps.version.outputs.version_short }}-${{ steps.platform.outputs.suffix }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.version.outputs.version_short }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/loonghao/agentverse
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  create-manifest:
+    needs: [build-and-push]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          fi
+          echo "version_short=${VERSION#v}" >> $GITHUB_OUTPUT
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create and push GHCR manifest
+        run: |
+          V="${{ steps.version.outputs.version_short }}"
+          docker manifest rm ${{ env.GHCR_REPO }}:${V} 2>/dev/null || true
+          docker manifest rm ${{ env.GHCR_REPO }}:latest 2>/dev/null || true
+          docker manifest create ${{ env.GHCR_REPO }}:${V} \
+            ${{ env.GHCR_REPO }}:${V}-linux-amd64 \
+            ${{ env.GHCR_REPO }}:${V}-linux-arm64
+          docker manifest push ${{ env.GHCR_REPO }}:${V}
+          docker manifest create ${{ env.GHCR_REPO }}:latest \
+            ${{ env.GHCR_REPO }}:${V}-linux-amd64 \
+            ${{ env.GHCR_REPO }}:${V}-linux-arm64
+          docker manifest push ${{ env.GHCR_REPO }}:latest

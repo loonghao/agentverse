@@ -1,0 +1,17 @@
+[package]
+name = "agentverse-storage"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+agentverse-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+sea-orm = { workspace = true }
+semver = { workspace = true }
+

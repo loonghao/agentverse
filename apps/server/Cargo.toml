@@ -1,0 +1,31 @@
+[package]
+name = "agentverse-server"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "agentverse-server"
+path = "src/main.rs"
+
+[dependencies]
+agentverse-api = { workspace = true }
+agentverse-core = { workspace = true }
+agentverse-storage = { workspace = true }
+agentverse-auth = { workspace = true }
+agentverse-events = { workspace = true }
+agentverse-search = { workspace = true }
+
+tokio = { workspace = true }
+axum = { workspace = true }
+tower-http = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+dotenvy = { workspace = true }
+config = { workspace = true }
+serde = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+uuid = { workspace = true }
+sqlx = { workspace = true }

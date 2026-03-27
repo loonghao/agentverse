@@ -1,0 +1,21 @@
+/target
+.env
+*.env.local
+*.heapsnapshot
+
+
+# AI agent skill installations
+.agents/
+.claude/
+.cline/
+.codebuddy/
+.cursor/
+.kiro/
+.opencode/
+.roo/
+.trae/
+.windsurf/
+.gemini/
+.amp/
+.copilot/
+

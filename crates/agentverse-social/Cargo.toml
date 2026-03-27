@@ -1,0 +1,15 @@
+[package]
+name = "agentverse-social"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+agentverse-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+

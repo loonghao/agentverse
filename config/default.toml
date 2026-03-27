@@ -1,0 +1,46 @@
+[server]
+host = "0.0.0.0"
+port = 8080
+# Request body size limit (bytes)
+body_limit = 10_485_760  # 10 MB
+
+[database]
+url = "postgres://agentverse:agentverse_dev@localhost:5432/agentverse"
+max_connections = 20
+min_connections = 2
+connect_timeout_secs = 10
+
+[redis]
+url = "redis://localhost:6379"
+pool_size = 10
+# Default cache TTL in seconds
+default_ttl_secs = 300
+
+[storage]
+endpoint = "http://localhost:9000"
+access_key = "minioadmin"
+secret_key = "minioadmin123"
+bucket = "agentverse"
+region = "us-east-1"
+
+[auth]
+jwt_secret = "change-me-in-production"
+# JWT expiry in seconds (24h)
+access_token_expiry_secs = 86400
+# Refresh token expiry (30 days)
+refresh_token_expiry_secs = 2_592_000
+
+[versioning]
+# Default bump when not explicitly specified
+default_bump = "patch"
+# Auto-infer bump from manifest diff
+auto_infer = true
+
+[registry]
+# Max versions to keep per artifact (0 = unlimited)
+max_versions = 0
+# Allow anonymous read access
+anonymous_read = true
+# Require email verification before publishing
+require_verified_email = false
+

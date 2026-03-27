@@ -1,0 +1,53 @@
+{
+  "name": "agentverse",
+  "version": "0.1.0",
+  "description": "AgentVerse CLI — publish, discover, and install AI skills, agents, workflows, and souls from the universal agent marketplace",
+  "author": "loonghao",
+  "repository": "https://github.com/loonghao/agentverse",
+  "license": "MIT",
+  "category": "cli-tools",
+  "tags": ["agents", "skills", "workflows", "marketplace", "registry", "ai", "mcp"],
+  "entry_points": {
+    "cli": {
+      "command": "agentverse",
+      "description": "AgentVerse command-line interface"
+    }
+  },
+  "install": {
+    "binary": {
+      "github_release": {
+        "repo": "loonghao/agentverse",
+        "asset_pattern": "agentverse-{target}",
+        "targets": {
+          "x86_64-unknown-linux-gnu": "agentverse-x86_64-unknown-linux-gnu.tar.gz",
+          "x86_64-pc-windows-msvc": "agentverse-x86_64-pc-windows-msvc.zip",
+          "x86_64-apple-darwin": "agentverse-x86_64-apple-darwin.tar.gz",
+          "aarch64-apple-darwin": "agentverse-aarch64-apple-darwin.tar.gz"
+        }
+      }
+    }
+  },
+  "commands": {
+    "search": "Search for artifacts (skills, agents, workflows, souls, prompts)",
+    "get": "Get a specific artifact by kind/namespace/name",
+    "list": "List artifacts filtered by kind or namespace",
+    "publish": "Publish a new artifact or version",
+    "login": "Authenticate with an AgentVerse server",
+    "whoami": "Show the currently authenticated user"
+  },
+  "examples": [
+    {
+      "description": "Search for Python skills",
+      "command": "agentverse search --query 'python' --kind skill"
+    },
+    {
+      "description": "Publish a new skill",
+      "command": "agentverse publish --file skill.toml"
+    },
+    {
+      "description": "Get a specific agent",
+      "command": "agentverse get --kind agent --namespace myorg --name my-agent"
+    }
+  ]
+}
+
