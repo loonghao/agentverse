@@ -101,8 +101,9 @@ flate2 = { version = "1" }
 tar = { version = "0.4" }
 # Hashing
 sha2 = { version = "0.10" }
-# Object storage (S3/COS/MinIO/local) — Apache Arrow project
-object_store = { version = "0.11", features = ["aws", "http"] }
+# Object storage (S3/COS/MinIO/local) — Apache Arrow project (arrow-rs-object-store)
+# 0.13.x: latest stable as of 2026-03, requires Rust 1.85, edition 2024 internally
+object_store = { version = "0.13", features = ["aws", "http"] }
 # Raw bytes buffer (used by object store trait)
 bytes = { version = "1" }
 # Internal crates

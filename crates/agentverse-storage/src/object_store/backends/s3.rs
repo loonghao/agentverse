@@ -11,7 +11,12 @@
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use object_store::{aws::AmazonS3Builder, path::Path as OsPath, ObjectStore as ApacheObjectStore};
+// In object_store 0.13 the async methods (get/put/delete) are defined on
+// ObjectStore but only accessible via Arc<dyn ObjectStore> through
+// ObjectStoreExt, which must be explicitly in scope.
+use object_store::{
+    aws::AmazonS3Builder, path::Path as OsPath, ObjectStore as ApacheObjectStore, ObjectStoreExt,
+};
 use std::sync::Arc;
 use tracing::debug;
 
