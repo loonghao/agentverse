@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/loonghao/agentverse/compare/v0.1.3...v0.1.4) (2026-03-28)
+
+
+### Bug Fixes
+
+* replace manual stub build with cargo-chef to fix Docker stage 2 failure ([b2679eb](https://github.com/loonghao/agentverse/commit/b2679eb25bdbb42a4c235d159ae7a8fdf94e2811))
+
 ## [0.1.3](https://github.com/loonghao/agentverse/compare/v0.1.2...v0.1.3) (2026-03-27)
 
 
