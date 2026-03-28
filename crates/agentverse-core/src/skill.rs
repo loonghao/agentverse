@@ -26,6 +26,7 @@ pub enum SourceType {
     GitHub,
     /// GitHub repository subdirectory skill (anthropics/skills pattern).
     /// The `metadata.github_repo` field holds owner/repo/ref/skill_path.
+    #[serde(rename = "github_repo")]
     GitHubRepo,
     /// Generic HTTP/HTTPS URL (custom hosting)
     Url,

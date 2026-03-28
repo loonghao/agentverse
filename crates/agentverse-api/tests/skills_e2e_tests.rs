@@ -16,7 +16,7 @@ mod common;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use bytes::Bytes;
-use common::{build_test_app, build_test_app_with_state};
+use common::{build_test_app, build_test_app_with_github_base, build_test_app_with_state};
 use http_body_util::BodyExt;
 use tower::ServiceExt;
 
@@ -1150,4 +1150,248 @@ async fn serve_missing_file_returns_404() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+// ── Import endpoint — mock GitHub raw-content server ─────────────────────────
+//
+// These tests spin up a tiny local Axum server that serves fake SKILL.md
+// content at any path.  `AppState.github_raw_base_url` redirects the import
+// handler to this server instead of `raw.githubusercontent.com`, so no real
+// network calls are made.
+
+/// Spawn a minimal HTTP server that returns `status` and `body` for every GET.
+///
+/// Returns `(base_url, join_handle)`.  Keep the handle alive for the test
+/// duration (drop ⇒ server shuts down).
+async fn start_mock_raw_server(status: u16, body: String) -> (String, tokio::task::JoinHandle<()>) {
+    use axum::{
+        body::Body as AxumBody, http::StatusCode as HStatus, response::Response, routing::any,
+        Router,
+    };
+    use tokio::net::TcpListener;
+
+    let app = Router::new().fallback(any(move || {
+        let body = body.clone();
+        async move {
+            Response::builder()
+                .status(HStatus::from_u16(status).unwrap())
+                .header("content-type", "text/plain; charset=utf-8")
+                .body(AxumBody::from(body))
+                .unwrap()
+        }
+    }));
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    let handle = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    (format!("http://127.0.0.1:{port}"), handle)
+}
+
+/// Minimal valid SKILL.md with all fields exercised by the import handler.
+const MOCK_SKILL_MD: &str = "\
+---
+name: mock-ripgrep
+description: \"Fast regex search powered by ripgrep\"
+version: \"1.3.0\"
+tags: [search, cli, regex]
+license: MIT
+metadata:
+  openclaw:
+    homepage: https://example.com/mock-ripgrep
+    emoji: \"🔍\"
+---
+# Mock Ripgrep
+
+A skill used only in integration tests.
+";
+
+#[tokio::test]
+async fn import_skill_happy_path_with_mock_github() {
+    let (base_url, _server) = start_mock_raw_server(200, MOCK_SKILL_MD.to_string()).await;
+    let (app, _state) = build_test_app_with_github_base(base_url);
+    let (_uid, token) = register_and_login(&app).await;
+
+    let resp = app
+        .oneshot(json_req(
+            "POST",
+            "/api/v1/skills/import",
+            serde_json::json!({
+                "url": "https://github.com/testorg/testrepo/tree/main/skills/mock-ripgrep",
+                "namespace": "testorg"
+            }),
+            Some(&token),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let json = body_json(resp).await;
+
+    // Skill metadata extracted from SKILL.md frontmatter.
+    assert_eq!(json["skill"]["name"].as_str().unwrap(), "mock-ripgrep");
+    assert_eq!(json["skill"]["namespace"].as_str().unwrap(), "testorg");
+    assert_eq!(json["skill"]["version"].as_str().unwrap(), "1.3.0");
+    assert_eq!(json["skill"]["license"].as_str().unwrap(), "MIT");
+    assert!(
+        json["created"].as_bool().unwrap(),
+        "first import should set created=true"
+    );
+
+    // Tags must have been persisted.
+    let tags: Vec<&str> = json["skill"]["tags"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|t| t.as_str())
+        .collect();
+    assert!(
+        tags.contains(&"search"),
+        "tags should contain 'search': {tags:?}"
+    );
+    assert!(tags.contains(&"cli"), "tags should contain 'cli': {tags:?}");
+
+    // Package points to the repo archive zip, not to the raw SKILL.md URL.
+    let pkg = &json["package"];
+    assert_eq!(pkg["source_type"].as_str().unwrap(), "github_repo");
+    assert!(
+        pkg["download_url"]
+            .as_str()
+            .unwrap()
+            .ends_with("archive/main.zip"),
+        "download_url should be the repo archive zip, got: {}",
+        pkg["download_url"]
+    );
+}
+
+#[tokio::test]
+async fn import_skill_idempotent_returns_existing_on_second_call() {
+    let (base_url, _server) = start_mock_raw_server(200, MOCK_SKILL_MD.to_string()).await;
+    let (app, _state) = build_test_app_with_github_base(base_url);
+    let (_uid, token) = register_and_login(&app).await;
+
+    let req_body = serde_json::json!({
+        "url": "https://github.com/testorg/testrepo/tree/main/skills/mock-ripgrep",
+        "namespace": "testorg"
+    });
+
+    // First import: creates the skill.
+    let resp1 = app
+        .clone()
+        .oneshot(json_req(
+            "POST",
+            "/api/v1/skills/import",
+            req_body.clone(),
+            Some(&token),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp1.status(), StatusCode::CREATED);
+    let json1 = body_json(resp1).await;
+    assert!(json1["created"].as_bool().unwrap());
+
+    // Second import: returns 200 with the existing skill.
+    let resp2 = app
+        .oneshot(json_req(
+            "POST",
+            "/api/v1/skills/import",
+            req_body,
+            Some(&token),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp2.status(), StatusCode::OK);
+    let json2 = body_json(resp2).await;
+    assert!(!json2["created"].as_bool().unwrap());
+    assert_eq!(
+        json1["skill"]["name"].as_str().unwrap(),
+        json2["skill"]["name"].as_str().unwrap()
+    );
+}
+
+#[tokio::test]
+async fn import_skill_github_404_returns_bad_request() {
+    // Mock server returns 404 — simulates a missing branch or deleted SKILL.md.
+    let (base_url, _server) = start_mock_raw_server(404, "Not Found".to_string()).await;
+    let (app, _state) = build_test_app_with_github_base(base_url);
+    let (_uid, token) = register_and_login(&app).await;
+
+    let resp = app
+        .oneshot(json_req(
+            "POST",
+            "/api/v1/skills/import",
+            serde_json::json!({
+                "url": "https://github.com/testorg/testrepo/tree/deleted-branch/skills/gone-skill"
+            }),
+            Some(&token),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let json = body_json(resp).await;
+    let msg = json["error"]["message"].as_str().unwrap_or("");
+    assert!(
+        msg.contains("SKILL.md") || msg.contains("404"),
+        "error message should mention SKILL.md or 404, got: {msg}"
+    );
+}
+
+#[tokio::test]
+async fn import_skill_namespace_defaults_to_repo_owner() {
+    let (base_url, _server) = start_mock_raw_server(200, MOCK_SKILL_MD.to_string()).await;
+    let (app, _state) = build_test_app_with_github_base(base_url);
+    let (_uid, token) = register_and_login(&app).await;
+
+    // No "namespace" field in the request body.
+    let resp = app
+        .oneshot(json_req(
+            "POST",
+            "/api/v1/skills/import",
+            serde_json::json!({
+                "url": "https://github.com/theowner/somerepo/tree/main/skills/mock-ripgrep"
+            }),
+            Some(&token),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let json = body_json(resp).await;
+    assert_eq!(
+        json["skill"]["namespace"].as_str().unwrap(),
+        "theowner",
+        "namespace should default to the repo owner"
+    );
+}
+
+#[tokio::test]
+async fn import_skill_description_is_populated() {
+    let (base_url, _server) = start_mock_raw_server(200, MOCK_SKILL_MD.to_string()).await;
+    let (app, _state) = build_test_app_with_github_base(base_url);
+    let (_uid, token) = register_and_login(&app).await;
+
+    let resp = app
+        .oneshot(json_req(
+            "POST",
+            "/api/v1/skills/import",
+            serde_json::json!({
+                "url": "https://github.com/testorg/testrepo/tree/main/skills/mock-ripgrep",
+                "namespace": "testorg"
+            }),
+            Some(&token),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let json = body_json(resp).await;
+    let desc = json["skill"]["description"].as_str().unwrap_or("");
+    assert!(
+        desc.contains("ripgrep"),
+        "description should contain 'ripgrep', got: {desc}"
+    );
 }

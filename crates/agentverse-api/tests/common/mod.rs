@@ -474,6 +474,17 @@ impl SkillInstallRepository for InMemorySkillInstallRepo {
 pub const TEST_JWT_SECRET: &str = "test-secret-32-chars-minimum!!!";
 
 fn make_mock_state(users: Arc<dyn UserRepository>) -> AppState {
+    make_mock_state_with_opts(users, None)
+}
+
+/// Build mock AppState, optionally overriding the GitHub raw-content base URL.
+///
+/// Set `github_raw_base_url` to a local mock server URL to avoid real network
+/// calls during import tests.
+pub fn make_mock_state_with_opts(
+    users: Arc<dyn UserRepository>,
+    github_raw_base_url: Option<String>,
+) -> AppState {
     let config = AppConfig {
         jwt_secret: TEST_JWT_SECRET.into(),
         anonymous_read: true,
@@ -511,7 +522,18 @@ fn make_mock_state(users: Arc<dyn UserRepository>) -> AppState {
                 .expect("local test object store"),
             ))
         },
+        github_raw_base_url,
     }
+}
+
+/// Build a test app + state with a custom GitHub raw-content base URL.
+///
+/// Use this in import tests to redirect SKILL.md fetches to a local mock server.
+pub fn build_test_app_with_github_base(github_raw_base_url: String) -> (Router, AppState) {
+    let state =
+        make_mock_state_with_opts(Arc::new(InMemoryUserRepo::new()), Some(github_raw_base_url));
+    let router = build_router(state.clone()).with_state(state.clone());
+    (router, state)
 }
 
 /// Build a fully wired Axum `Router` backed by in-memory stubs.

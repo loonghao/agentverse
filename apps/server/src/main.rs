@@ -165,6 +165,8 @@ async fn main() -> anyhow::Result<()> {
         skill_packages: Arc::new(SkillPackageRepo::new(db.clone())),
         skill_installs: Arc::new(SkillInstallRepo::new(db.clone())),
         object_store,
+        // Production always uses the real GitHub raw-content host.
+        github_raw_base_url: None,
     };
 
     let app = build_router(state.clone())

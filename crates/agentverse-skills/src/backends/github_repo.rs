@@ -56,9 +56,20 @@ impl GitHubRepoInfo {
 
     /// Raw URL for a specific file inside the skill directory.
     pub fn raw_url(&self, file: &str) -> String {
+        self.raw_url_with_base(file, None)
+    }
+
+    /// Raw URL with an optional base URL override (useful for testing with a mock server).
+    ///
+    /// When `base` is `None` the real `raw.githubusercontent.com` host is used.
+    /// When `base` is `Some("http://127.0.0.1:1234")` the URL becomes:
+    /// `http://127.0.0.1:1234/{owner}/{repo}/{ref}/{skill_path}/{file}`
+    pub fn raw_url_with_base(&self, file: &str, base: Option<&str>) -> String {
+        let base = base.unwrap_or("https://raw.githubusercontent.com");
+        let base = base.trim_end_matches('/');
         format!(
-            "https://raw.githubusercontent.com/{}/{}/{}/{}/{}",
-            self.owner, self.repo, self.git_ref, self.skill_path, file
+            "{}/{}/{}/{}/{}/{}",
+            base, self.owner, self.repo, self.git_ref, self.skill_path, file
         )
     }
 
@@ -126,7 +137,19 @@ impl GitHubRepoBackend {
 
     /// Fetch the raw SKILL.md text for a repo-based skill.
     pub async fn fetch_skill_md(&self, info: &GitHubRepoInfo) -> Result<String, SkillError> {
-        let url = info.raw_url("SKILL.md");
+        self.fetch_skill_md_with_base(info, None).await
+    }
+
+    /// Fetch SKILL.md with an optional base URL override.
+    ///
+    /// Pass `raw_base = Some("http://127.0.0.1:PORT")` in tests to redirect
+    /// fetches to a local mock server instead of `raw.githubusercontent.com`.
+    pub async fn fetch_skill_md_with_base(
+        &self,
+        info: &GitHubRepoInfo,
+        raw_base: Option<&str>,
+    ) -> Result<String, SkillError> {
+        let url = info.raw_url_with_base("SKILL.md", raw_base);
         tracing::debug!(%url, "fetching SKILL.md");
         let resp = self.client.get(&url).send().await?;
         let status = resp.status();
