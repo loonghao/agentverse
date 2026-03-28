@@ -342,14 +342,20 @@ pub async fn import_skill(
         ))
     })?;
 
-    // Fetch SKILL.md to get name / description
+    // Fetch SKILL.md to get name / description.
+    // `state.github_raw_base_url` is `None` in production (uses real GitHub) and
+    // overridden to a local mock server URL during integration tests.
     let backend = GitHubRepoBackend::default();
-    let skill_md = backend.fetch_skill_md(&info).await.map_err(|e| {
-        ApiError::BadRequest(format!(
-            "could not fetch SKILL.md from {}: {e}",
-            info.raw_url("SKILL.md")
-        ))
-    })?;
+    let raw_base = state.github_raw_base_url.as_deref();
+    let skill_md = backend
+        .fetch_skill_md_with_base(&info, raw_base)
+        .await
+        .map_err(|e| {
+            ApiError::BadRequest(format!(
+                "could not fetch SKILL.md from {}: {e}",
+                info.raw_url_with_base("SKILL.md", raw_base)
+            ))
+        })?;
 
     // Parse the full SKILL.md frontmatter — tags, metadata, version, etc.
     let fallback_name = info

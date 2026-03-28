@@ -30,6 +30,12 @@ pub struct AppState {
     /// `None` when no `[object_store]` section is present in the server
     /// configuration.  Upload endpoints return 501 in that case.
     pub object_store: Option<Arc<dyn ObjectStore>>,
+    /// Override the raw-content base URL used when fetching `SKILL.md` from
+    /// GitHub during skill import.
+    ///
+    /// Production: `None` → uses `https://raw.githubusercontent.com`.
+    /// Tests: set to a local mock server URL so no real network calls are made.
+    pub github_raw_base_url: Option<String>,
 }
 
 #[derive(Debug, Clone)]

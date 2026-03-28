@@ -437,7 +437,7 @@ jobs:
             -H "authorization: Bearer ${E2E_TOKEN}" \
             -H 'content-type: application/json' \
             -d '{
-              "url": "https://github.com/loonghao/agentverse/tree/feat/skills-management/skills/ripgrep-search",
+              "url": "https://github.com/loonghao/agentverse/tree/main/skills/ripgrep-search",
               "namespace": "e2eorg"
             }')
           IMPORT_CODE=$(echo "$IMPORT_RESP" | tail -1)
@@ -472,7 +472,7 @@ jobs:
             -H "authorization: Bearer ${E2E_TOKEN}" \
             -H 'content-type: application/json' \
             -d '{
-              "url": "https://github.com/loonghao/agentverse/tree/feat/skills-management/skills/agentverse-openclaw",
+              "url": "https://github.com/loonghao/agentverse/tree/main/skills/agentverse-openclaw",
               "namespace": "e2eorg"
             }')
           IMPORT_CODE=$(echo "$IMPORT_RESP" | tail -1)
