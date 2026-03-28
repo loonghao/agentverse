@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.7](https://github.com/loonghao/agentverse/compare/v0.1.6...v0.1.7) (2026-03-28)
+
+
+### Features
+
+* build server binary natively before Docker packaging ([e0cdd64](https://github.com/loonghao/agentverse/commit/e0cdd64196ef05ea14b69634666aa3edb11ab66a))
+
+
+### Bug Fixes
+
+* **manifest:** accept null for Manifest fields; fix CLI null to default ([00a68d8](https://github.com/loonghao/agentverse/commit/00a68d86786a4f4dbd89078ba8dd0d06685591b8))
+* **packages:** persist SkillPackage directly; convert source_type to TEXT ([56ffee6](https://github.com/loonghao/agentverse/commit/56ffee60bc33cfb4e5cdeffba810616ac4528a01))
+
+
+### Documentation
+
+* add VitePress documentation site with CI/CD deployment ([aaefd3e](https://github.com/loonghao/agentverse/commit/aaefd3e2699a05b50b6b764a07bddb3979b2de0f))
+
 ## [0.1.6](https://github.com/loonghao/agentverse/compare/v0.1.5...v0.1.6) (2026-03-28)
 
 
