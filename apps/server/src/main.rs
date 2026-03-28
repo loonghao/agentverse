@@ -3,6 +3,7 @@
 use std::{net::SocketAddr, sync::Arc};
 
 use axum::routing::post;
+use clap::Parser;
 use tower_http::{
     cors::{Any, CorsLayer},
     trace::TraceLayer,
@@ -19,16 +20,69 @@ use agentverse_events::EventStore;
 use agentverse_search::{FullTextSearch, SemanticSearch};
 use agentverse_storage::{ArtifactRepo, Database, SocialRepo, UserRepo, VersionRepo};
 
+// ── CLI args ──────────────────────────────────────────────────────────────────
+
+#[derive(Parser)]
+#[command(name = "agentverse-server", version, about = "AgentVerse server")]
+struct Cli {
+    /// Update the server binary to the latest GitHub release and exit
+    #[arg(long)]
+    self_update: bool,
+
+    /// Check whether a newer release exists without installing it, then exit
+    #[arg(long)]
+    check_update: bool,
+
+    /// GitHub personal access token for release API (avoids rate limits)
+    #[arg(long, env = "GITHUB_TOKEN")]
+    token: Option<String>,
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Load .env if present
     let _ = dotenvy::dotenv();
+
+    // Parse CLI args before logging so --self-update / --check-update can exit early
+    let cli = Cli::parse();
 
     // Init structured logging
     tracing_subscriber::registry()
         .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
         .with(tracing_subscriber::fmt::layer())
         .init();
+
+    // ── Self-update handling ──────────────────────────────────────────────────
+    if cli.check_update || cli.self_update {
+        let current = env!("CARGO_PKG_VERSION");
+        tracing::info!("checking for updates (current: v{current})...");
+
+        match agentverse_updater::check_for_update(
+            current,
+            "agentverse-server",
+            cli.token.as_deref(),
+        )
+        .await?
+        {
+            None => {
+                tracing::info!("already up to date (v{current})");
+            }
+            Some(info) => {
+                tracing::info!("new version available: v{}", info.version);
+                if cli.self_update {
+                    tracing::info!("downloading {}...", info.asset_name);
+                    agentverse_updater::apply_update(&info, cli.token.as_deref()).await?;
+                    tracing::info!("updated to v{} — restart the service", info.version);
+                } else {
+                    tracing::info!(
+                        "run `agentverse-server --self-update` to install v{}",
+                        info.version
+                    );
+                }
+            }
+        }
+        return Ok(());
+    }
 
     let port: u16 = std::env::var("PORT")
         .ok()

@@ -10,8 +10,9 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "agentverse"
-version = "0.1.1"
+version = "0.1.4"
 dependencies = [
+ "agentverse-updater",
  "anyhow",
  "clap",
  "colored",
@@ -31,7 +32,7 @@ dependencies = [
 
 [[package]]
 name = "agentverse-api"
-version = "0.1.1"
+version = "0.1.4"
 dependencies = [
  "agentverse-auth",
  "agentverse-core",
@@ -61,7 +62,7 @@ dependencies = [
 
 [[package]]
 name = "agentverse-auth"
-version = "0.1.1"
+version = "0.1.4"
 dependencies = [
  "agentverse-core",
  "argon2",
@@ -80,7 +81,7 @@ dependencies = [
 
 [[package]]
 name = "agentverse-core"
-version = "0.1.1"
+version = "0.1.4"
 dependencies = [
  "async-trait",
  "chrono",
@@ -94,7 +95,7 @@ dependencies = [
 
 [[package]]
 name = "agentverse-events"
-version = "0.1.1"
+version = "0.1.4"
 dependencies = [
  "agentverse-core",
  "agentverse-storage",
@@ -111,7 +112,7 @@ dependencies = [
 
 [[package]]
 name = "agentverse-search"
-version = "0.1.1"
+version = "0.1.4"
 dependencies = [
  "agentverse-core",
  "agentverse-storage",
@@ -129,7 +130,7 @@ dependencies = [
 
 [[package]]
 name = "agentverse-server"
-version = "0.1.1"
+version = "0.1.4"
 dependencies = [
  "agentverse-api",
  "agentverse-auth",
@@ -137,9 +138,11 @@ dependencies = [
  "agentverse-events",
  "agentverse-search",
  "agentverse-storage",
+ "agentverse-updater",
  "anyhow",
  "async-trait",
  "axum 0.8.8",
+ "clap",
  "config",
  "dotenvy",
  "serde",
@@ -153,7 +156,7 @@ dependencies = [
 
 [[package]]
 name = "agentverse-social"
-version = "0.1.1"
+version = "0.1.4"
 dependencies = [
  "agentverse-core",
  "async-trait",
@@ -167,7 +170,7 @@ dependencies = [
 
 [[package]]
 name = "agentverse-storage"
-version = "0.1.1"
+version = "0.1.4"
 dependencies = [
  "agentverse-core",
  "async-trait",
@@ -182,8 +185,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "agentverse-updater"
+version = "0.1.4"
+dependencies = [
+ "anyhow",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "agentverse-versioning"
-version = "0.1.1"
+version = "0.1.4"
 dependencies = [
  "agentverse-core",
  "async-trait",
@@ -2615,7 +2629,9 @@ checksum = "eddd3ca559203180a307f12d114c268abf583f59b03cb906fd0b3ff8646c1147"
 dependencies = [
  "base64 0.22.1",
  "bytes",
+ "futures-channel",
  "futures-core",
+ "futures-util",
  "http",
  "http-body",
  "http-body-util",
@@ -4024,6 +4040,7 @@ dependencies = [
  "base64 0.22.1",
  "mime_guess",
  "regex",
+ "reqwest",
  "rust-embed",
  "serde",
  "serde_json",
