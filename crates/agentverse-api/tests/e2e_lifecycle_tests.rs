@@ -29,7 +29,12 @@ use tower::ServiceExt;
 
 // ── Test helpers ──────────────────────────────────────────────────────────────
 
-fn json_req(method: &str, uri: &str, body: serde_json::Value, token: Option<&str>) -> Request<Body> {
+fn json_req(
+    method: &str,
+    uri: &str,
+    body: serde_json::Value,
+    token: Option<&str>,
+) -> Request<Body> {
     let mut b = Request::builder()
         .method(method)
         .uri(uri)
@@ -37,7 +42,8 @@ fn json_req(method: &str, uri: &str, body: serde_json::Value, token: Option<&str
     if let Some(t) = token {
         b = b.header("authorization", format!("Bearer {t}"));
     }
-    b.body(Body::from(serde_json::to_string(&body).unwrap())).unwrap()
+    b.body(Body::from(serde_json::to_string(&body).unwrap()))
+        .unwrap()
 }
 
 async fn body_json(resp: axum::response::Response) -> serde_json::Value {
@@ -342,7 +348,10 @@ async fn publish_new_version_increments_version_list() {
         .unwrap();
     let json = body_json(list_resp).await;
     let versions = json["versions"].as_array().unwrap();
-    assert!(versions.len() >= 2, "expected at least 2 versions after bump");
+    assert!(
+        versions.len() >= 2,
+        "expected at least 2 versions after bump"
+    );
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -358,14 +367,26 @@ async fn like_then_list_shows_one_like() {
     // Add like
     let resp = app
         .clone()
-        .oneshot(json_req("POST", "/api/v1/skills/testorg/like-skill/likes", serde_json::json!({}), Some(&token)))
-        .await.unwrap();
+        .oneshot(json_req(
+            "POST",
+            "/api/v1/skills/testorg/like-skill/likes",
+            serde_json::json!({}),
+            Some(&token),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
 
     // List likes
     let resp = app
-        .oneshot(Request::builder().uri("/api/v1/skills/testorg/like-skill/likes").body(Body::empty()).unwrap())
-        .await.unwrap();
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/skills/testorg/like-skill/likes")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     let json = body_json(resp).await;
     assert_eq!(json["total"], 1, "should have 1 like");
 }
@@ -377,16 +398,39 @@ async fn unlike_removes_like() {
     create_skill(&app, &token, "unlike-skill").await;
 
     // Like then unlike
-    app.clone().oneshot(json_req("POST", "/api/v1/skills/testorg/unlike-skill/likes", serde_json::json!({}), Some(&token))).await.unwrap();
+    app.clone()
+        .oneshot(json_req(
+            "POST",
+            "/api/v1/skills/testorg/unlike-skill/likes",
+            serde_json::json!({}),
+            Some(&token),
+        ))
+        .await
+        .unwrap();
     let resp = app
         .clone()
-        .oneshot(Request::builder().method("DELETE").uri("/api/v1/skills/testorg/unlike-skill/likes")
-            .header("authorization", format!("Bearer {token}")).body(Body::empty()).unwrap())
-        .await.unwrap();
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/v1/skills/testorg/unlike-skill/likes")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert!(resp.status().is_success());
 
     // Verify 0 likes
-    let resp = app.oneshot(Request::builder().uri("/api/v1/skills/testorg/unlike-skill/likes").body(Body::empty()).unwrap()).await.unwrap();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/skills/testorg/unlike-skill/likes")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     let json = body_json(resp).await;
     assert_eq!(json["total"], 0, "like should be removed");
 }
@@ -403,16 +447,28 @@ async fn add_and_list_comment() {
 
     let resp = app
         .clone()
-        .oneshot(json_req("POST", "/api/v1/skills/testorg/comment-skill/comments",
-            serde_json::json!({ "content": "Great skill!", "kind": "review" }), Some(&token)))
-        .await.unwrap();
+        .oneshot(json_req(
+            "POST",
+            "/api/v1/skills/testorg/comment-skill/comments",
+            serde_json::json!({ "content": "Great skill!", "kind": "review" }),
+            Some(&token),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
     let created = body_json(resp).await;
     assert_eq!(created["comment"]["content"], "Great skill!");
 
     // List
-    let resp = app.oneshot(Request::builder().uri("/api/v1/skills/testorg/comment-skill/comments")
-        .body(Body::empty()).unwrap()).await.unwrap();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/skills/testorg/comment-skill/comments")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     let json = body_json(resp).await;
     assert_eq!(json["total"], 1);
 }
@@ -425,17 +481,29 @@ async fn update_comment_changes_content() {
 
     let resp = app
         .clone()
-        .oneshot(json_req("POST", "/api/v1/skills/testorg/edit-comment-skill/comments",
-            serde_json::json!({ "content": "original", "kind": "review" }), Some(&token)))
-        .await.unwrap();
-    let comment_id = body_json(resp).await["comment"]["id"].as_str().unwrap().to_owned();
+        .oneshot(json_req(
+            "POST",
+            "/api/v1/skills/testorg/edit-comment-skill/comments",
+            serde_json::json!({ "content": "original", "kind": "review" }),
+            Some(&token),
+        ))
+        .await
+        .unwrap();
+    let comment_id = body_json(resp).await["comment"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
 
     let update_resp = app
         .clone()
-        .oneshot(json_req("PUT",
+        .oneshot(json_req(
+            "PUT",
             &format!("/api/v1/skills/testorg/edit-comment-skill/comments/{comment_id}"),
-            serde_json::json!({ "content": "updated content" }), Some(&token)))
-        .await.unwrap();
+            serde_json::json!({ "content": "updated content" }),
+            Some(&token),
+        ))
+        .await
+        .unwrap();
     assert!(update_resp.status().is_success());
     let json = body_json(update_resp).await;
     assert_eq!(json["comment"]["content"], "updated content");
@@ -449,20 +517,42 @@ async fn delete_comment_removes_it_from_list() {
 
     let resp = app
         .clone()
-        .oneshot(json_req("POST", "/api/v1/skills/testorg/delete-comment-skill/comments",
-            serde_json::json!({ "content": "to be deleted", "kind": "review" }), Some(&token)))
-        .await.unwrap();
-    let comment_id = body_json(resp).await["comment"]["id"].as_str().unwrap().to_owned();
+        .oneshot(json_req(
+            "POST",
+            "/api/v1/skills/testorg/delete-comment-skill/comments",
+            serde_json::json!({ "content": "to be deleted", "kind": "review" }),
+            Some(&token),
+        ))
+        .await
+        .unwrap();
+    let comment_id = body_json(resp).await["comment"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
 
     app.clone()
-        .oneshot(Request::builder().method("DELETE")
-            .uri(&format!("/api/v1/skills/testorg/delete-comment-skill/comments/{comment_id}"))
-            .header("authorization", format!("Bearer {token}"))
-            .body(Body::empty()).unwrap())
-        .await.unwrap();
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!(
+                    "/api/v1/skills/testorg/delete-comment-skill/comments/{comment_id}"
+                ))
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
 
-    let resp = app.oneshot(Request::builder().uri("/api/v1/skills/testorg/delete-comment-skill/comments")
-        .body(Body::empty()).unwrap()).await.unwrap();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/skills/testorg/delete-comment-skill/comments")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     let json = body_json(resp).await;
     assert_eq!(json["total"], 0, "comment should be deleted");
 }
@@ -474,14 +564,32 @@ async fn threaded_reply_has_parent_id_set() {
     create_skill(&app, &token, "thread-skill").await;
 
     // Post parent comment
-    let resp = app.clone().oneshot(json_req("POST", "/api/v1/skills/testorg/thread-skill/comments",
-        serde_json::json!({ "content": "parent", "kind": "review" }), Some(&token))).await.unwrap();
-    let parent_id = body_json(resp).await["comment"]["id"].as_str().unwrap().to_owned();
+    let resp = app
+        .clone()
+        .oneshot(json_req(
+            "POST",
+            "/api/v1/skills/testorg/thread-skill/comments",
+            serde_json::json!({ "content": "parent", "kind": "review" }),
+            Some(&token),
+        ))
+        .await
+        .unwrap();
+    let parent_id = body_json(resp).await["comment"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
 
     // Reply
-    let resp = app.clone().oneshot(json_req("POST", "/api/v1/skills/testorg/thread-skill/comments",
-        serde_json::json!({ "content": "reply", "kind": "review", "parent_id": parent_id }),
-        Some(&token))).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_req(
+            "POST",
+            "/api/v1/skills/testorg/thread-skill/comments",
+            serde_json::json!({ "content": "reply", "kind": "review", "parent_id": parent_id }),
+            Some(&token),
+        ))
+        .await
+        .unwrap();
     let reply = body_json(resp).await;
     assert_eq!(reply["comment"]["parent_id"].as_str().unwrap(), parent_id);
 }
@@ -496,14 +604,28 @@ async fn add_rating_appears_in_list_and_stats() {
     let (_uid, token) = register_and_login(&app).await;
     create_skill(&app, &token, "rate-skill").await;
 
-    let resp = app.clone().oneshot(json_req("POST", "/api/v1/skills/testorg/rate-skill/ratings",
-        serde_json::json!({ "score": 5, "review_text": "Excellent!" }), Some(&token)))
-        .await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_req(
+            "POST",
+            "/api/v1/skills/testorg/rate-skill/ratings",
+            serde_json::json!({ "score": 5, "review_text": "Excellent!" }),
+            Some(&token),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
 
     // Stats should reflect the rating
-    let stats = app.oneshot(Request::builder().uri("/api/v1/skills/testorg/rate-skill/stats")
-        .body(Body::empty()).unwrap()).await.unwrap();
+    let stats = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/skills/testorg/rate-skill/stats")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     let json = body_json(stats).await;
     assert_eq!(json["ratings_count"], 1);
     assert_eq!(json["avg_rating"], 5.0);
@@ -515,8 +637,15 @@ async fn rating_out_of_range_returns_400() {
     let (_uid, token) = register_and_login(&app).await;
     create_skill(&app, &token, "bad-rate-skill").await;
 
-    let resp = app.oneshot(json_req("POST", "/api/v1/skills/testorg/bad-rate-skill/ratings",
-        serde_json::json!({ "score": 6 }), Some(&token))).await.unwrap();
+    let resp = app
+        .oneshot(json_req(
+            "POST",
+            "/api/v1/skills/testorg/bad-rate-skill/ratings",
+            serde_json::json!({ "score": 6 }),
+            Some(&token),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
@@ -530,14 +659,33 @@ async fn add_and_remove_tag() {
     let (_uid, token) = register_and_login(&app).await;
     create_skill(&app, &token, "tag-skill").await;
 
-    let resp = app.clone().oneshot(json_req("POST", "/api/v1/skills/testorg/tag-skill/tags",
-        serde_json::json!({ "tag": "ai" }), Some(&token))).await.unwrap();
-    assert!(resp.status().is_success(), "add tag should succeed, got {}", resp.status());
+    let resp = app
+        .clone()
+        .oneshot(json_req(
+            "POST",
+            "/api/v1/skills/testorg/tag-skill/tags",
+            serde_json::json!({ "tag": "ai" }),
+            Some(&token),
+        ))
+        .await
+        .unwrap();
+    assert!(
+        resp.status().is_success(),
+        "add tag should succeed, got {}",
+        resp.status()
+    );
 
-    let resp = app.oneshot(Request::builder().method("DELETE")
-        .uri("/api/v1/skills/testorg/tag-skill/tags/ai")
-        .header("authorization", format!("Bearer {token}"))
-        .body(Body::empty()).unwrap()).await.unwrap();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/v1/skills/testorg/tag-skill/tags/ai")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert!(resp.status().is_success(), "remove tag should succeed");
 }
 
@@ -659,20 +807,55 @@ async fn stats_reflects_all_social_actions() {
     create_skill(&app, &token1, "stats-skill").await;
 
     // Like (user 1)
-    app.clone().oneshot(json_req("POST", "/api/v1/skills/testorg/stats-skill/likes",
-        serde_json::json!({}), Some(&token1))).await.unwrap();
+    app.clone()
+        .oneshot(json_req(
+            "POST",
+            "/api/v1/skills/testorg/stats-skill/likes",
+            serde_json::json!({}),
+            Some(&token1),
+        ))
+        .await
+        .unwrap();
     // Like (user 2)
-    app.clone().oneshot(json_req("POST", "/api/v1/skills/testorg/stats-skill/likes",
-        serde_json::json!({}), Some(&token2))).await.unwrap();
+    app.clone()
+        .oneshot(json_req(
+            "POST",
+            "/api/v1/skills/testorg/stats-skill/likes",
+            serde_json::json!({}),
+            Some(&token2),
+        ))
+        .await
+        .unwrap();
     // Comment
-    app.clone().oneshot(json_req("POST", "/api/v1/skills/testorg/stats-skill/comments",
-        serde_json::json!({ "content": "nice", "kind": "review" }), Some(&token1))).await.unwrap();
+    app.clone()
+        .oneshot(json_req(
+            "POST",
+            "/api/v1/skills/testorg/stats-skill/comments",
+            serde_json::json!({ "content": "nice", "kind": "review" }),
+            Some(&token1),
+        ))
+        .await
+        .unwrap();
     // Rating 4
-    app.clone().oneshot(json_req("POST", "/api/v1/skills/testorg/stats-skill/ratings",
-        serde_json::json!({ "score": 4 }), Some(&token1))).await.unwrap();
+    app.clone()
+        .oneshot(json_req(
+            "POST",
+            "/api/v1/skills/testorg/stats-skill/ratings",
+            serde_json::json!({ "score": 4 }),
+            Some(&token1),
+        ))
+        .await
+        .unwrap();
     // Rating 2
-    app.clone().oneshot(json_req("POST", "/api/v1/skills/testorg/stats-skill/ratings",
-        serde_json::json!({ "score": 2 }), Some(&token2))).await.unwrap();
+    app.clone()
+        .oneshot(json_req(
+            "POST",
+            "/api/v1/skills/testorg/stats-skill/ratings",
+            serde_json::json!({ "score": 2 }),
+            Some(&token2),
+        ))
+        .await
+        .unwrap();
 
     let resp = app
         .oneshot(
@@ -745,7 +928,10 @@ async fn full_skill_lifecycle_clawhub_and_github_repo_packages() {
         pkg_json["package"]["download_url"],
         "https://github.com/testorg/skills/archive/main.zip"
     );
-    assert_eq!(pkg_json["package"]["metadata"]["github_repo"]["owner"], "testorg");
+    assert_eq!(
+        pkg_json["package"]["metadata"]["github_repo"]["owner"],
+        "testorg"
+    );
 
     // 4. List packages → 2 packages
     let resp = app
@@ -775,8 +961,16 @@ async fn full_skill_lifecycle_clawhub_and_github_repo_packages() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 
     // 6. Verify state: both packages persisted
-    let version_id = skill_json["version"]["id"].as_str().unwrap().parse::<uuid::Uuid>().unwrap();
-    let pkgs = state.skill_packages.list_for_version(version_id).await.unwrap();
+    let version_id = skill_json["version"]["id"]
+        .as_str()
+        .unwrap()
+        .parse::<uuid::Uuid>()
+        .unwrap();
+    let pkgs = state
+        .skill_packages
+        .list_for_version(version_id)
+        .await
+        .unwrap();
     assert_eq!(pkgs.len(), 2, "both packages should be in the repo");
     let source_types: Vec<String> = pkgs.iter().map(|p| p.source_type.to_string()).collect();
     assert!(source_types.contains(&"clawhub".to_string()));
@@ -791,24 +985,54 @@ async fn multi_user_social_isolation() {
     create_skill(&app, &token1, "shared-skill").await;
 
     // User 1 likes
-    app.clone().oneshot(json_req("POST", "/api/v1/skills/testorg/shared-skill/likes",
-        serde_json::json!({}), Some(&token1))).await.unwrap();
+    app.clone()
+        .oneshot(json_req(
+            "POST",
+            "/api/v1/skills/testorg/shared-skill/likes",
+            serde_json::json!({}),
+            Some(&token1),
+        ))
+        .await
+        .unwrap();
 
     // User 2 likes
-    app.clone().oneshot(json_req("POST", "/api/v1/skills/testorg/shared-skill/likes",
-        serde_json::json!({}), Some(&token2))).await.unwrap();
+    app.clone()
+        .oneshot(json_req(
+            "POST",
+            "/api/v1/skills/testorg/shared-skill/likes",
+            serde_json::json!({}),
+            Some(&token2),
+        ))
+        .await
+        .unwrap();
 
     // User 1 unlikes — should only remove user1's like
     app.clone()
-        .oneshot(Request::builder().method("DELETE").uri("/api/v1/skills/testorg/shared-skill/likes")
-            .header("authorization", format!("Bearer {token1}")).body(Body::empty()).unwrap())
-        .await.unwrap();
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/v1/skills/testorg/shared-skill/likes")
+                .header("authorization", format!("Bearer {token1}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
 
-    let resp = app.oneshot(Request::builder()
-        .uri("/api/v1/skills/testorg/shared-skill/likes").body(Body::empty()).unwrap())
-        .await.unwrap();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/skills/testorg/shared-skill/likes")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     let json = body_json(resp).await;
-    assert_eq!(json["total"], 1, "only user2's like should remain after user1 unlikes");
+    assert_eq!(
+        json["total"], 1,
+        "only user2's like should remain after user1 unlikes"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -823,13 +1047,21 @@ async fn trending_returns_200_with_items_array() {
     create_skill(&app, &token, "trending-skill-b").await;
 
     let resp = app
-        .oneshot(Request::builder().uri("/api/v1/trending").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/trending")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
 
     assert_eq!(resp.status(), StatusCode::OK);
     let json = body_json(resp).await;
-    assert!(json["items"].is_array(), "trending must return an items array");
+    assert!(
+        json["items"].is_array(),
+        "trending must return an items array"
+    );
     assert!(json["total"].as_u64().unwrap_or(0) >= 2);
 }
 
@@ -906,7 +1138,9 @@ async fn get_package_by_id_returns_200() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri(&format!("/api/v1/skills/testorg/pkg-get-skill/packages/{package_id}"))
+                .uri(format!(
+                    "/api/v1/skills/testorg/pkg-get-skill/packages/{package_id}"
+                ))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -937,14 +1171,19 @@ async fn delete_package_removes_it() {
         ))
         .await
         .unwrap();
-    let pkg_id = body_json(resp).await["package"]["id"].as_str().unwrap().to_owned();
+    let pkg_id = body_json(resp).await["package"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
 
     let del_resp = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri(&format!("/api/v1/skills/testorg/pkg-del-skill/packages/{pkg_id}"))
+                .uri(format!(
+                    "/api/v1/skills/testorg/pkg-del-skill/packages/{pkg_id}"
+                ))
                 .header("authorization", format!("Bearer {token}"))
                 .body(Body::empty())
                 .unwrap(),
@@ -959,7 +1198,9 @@ async fn delete_package_removes_it() {
     let get_resp = app
         .oneshot(
             Request::builder()
-                .uri(&format!("/api/v1/skills/testorg/pkg-del-skill/packages/{pkg_id}"))
+                .uri(format!(
+                    "/api/v1/skills/testorg/pkg-del-skill/packages/{pkg_id}"
+                ))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1108,4 +1349,3 @@ async fn list_skills_for_custom_agent_returns_200_with_empty_installs() {
     assert_eq!(json["total"], 0);
     assert!(json["installs"].as_array().unwrap().is_empty());
 }
-

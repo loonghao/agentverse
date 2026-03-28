@@ -579,11 +579,7 @@ pub async fn trending_artifacts(
     let limit = params.limit.unwrap_or(20).min(100) as usize;
 
     // Build a broad filter — kind is optional.
-    let kind = params
-        .kind
-        .as_deref()
-        .map(parse_kind)
-        .transpose()?;
+    let kind = params.kind.as_deref().map(parse_kind).transpose()?;
 
     let filter = ArtifactFilter {
         kind,
@@ -595,7 +591,8 @@ pub async fn trending_artifacts(
     let artifacts = state.artifacts.list(filter).await?;
 
     // Fetch social stats for each artifact and compute a composite score.
-    let mut scored: Vec<(Artifact, f64, agentverse_core::repository::ArtifactStats)> = Vec::with_capacity(artifacts.len());
+    let mut scored: Vec<(Artifact, f64, agentverse_core::repository::ArtifactStats)> =
+        Vec::with_capacity(artifacts.len());
     for a in artifacts {
         let stats = state.social.get_stats(a.id).await.unwrap_or_default();
         let score = a.downloads as f64

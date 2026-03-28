@@ -30,7 +30,8 @@ pub use backends::{
     parse_github_tree_url, ClawhubBackend, GitHubBackend, GitHubRepoBackend, GitHubRepoInfo,
     PackageBackend, UrlBackend,
 };
-pub use deploy::{deploy_skill, extract_zip_subpath, skill_install_path, all_known_agents, agent_skills_root};
+pub use deploy::{
+    agent_skills_root, all_known_agents, deploy_skill, extract_zip_subpath, skill_install_path,
+};
 pub use error::SkillError;
 pub use hooks::{HookRegistry, LoggingHook, MetadataHook, PublishHook};
-

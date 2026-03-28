@@ -10,10 +10,7 @@
 
 use std::sync::Arc;
 
-use agentverse_core::{
-    repository::SkillPackageRepository,
-    skill::SkillPackage,
-};
+use agentverse_core::{repository::SkillPackageRepository, skill::SkillPackage};
 use async_trait::async_trait;
 use chrono::Utc;
 use uuid::Uuid;
@@ -116,4 +113,3 @@ impl PublishHook for LoggingHook {
         Ok(())
     }
 }
-

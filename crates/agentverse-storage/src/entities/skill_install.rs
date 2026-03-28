@@ -32,4 +32,3 @@ impl Related<super::skill_package::Entity> for Entity {
 }
 
 impl ActiveModelBehavior for ActiveModel {}
-

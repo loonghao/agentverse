@@ -84,4 +84,3 @@ impl PackageBackend for GitHubBackend {
         Ok(bytes.len() as u64)
     }
 }
-

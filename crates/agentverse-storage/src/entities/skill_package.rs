@@ -35,4 +35,3 @@ impl Related<super::artifact_version::Entity> for Entity {
 }
 
 impl ActiveModelBehavior for ActiveModel {}
-
