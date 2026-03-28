@@ -13,26 +13,16 @@ permissions:
 
 jobs:
   publish-skills:
-    name: Publish ${{ matrix.skill }} to ClawHub
+    name: Publish AgentVerse CLI to ClawHub
     runs-on: ubuntu-latest
     if: github.repository == 'loonghao/agentverse'
 
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - skill: agentverse-openclaw
-            slug: agentverse-cli
-            display_name: "AgentVerse CLI"
-          - skill: api-smoke-tester
-            slug: api-smoke-tester
-            display_name: "API Smoke Tester"
-          - skill: code-reviewer
-            slug: code-reviewer
-            display_name: "Code Reviewer"
-          - skill: release-notes-writer
-            slug: release-notes-writer
-            display_name: "Release Notes Writer"
+    # Only our own skill is published to ClawHub.
+    # Other skills in skills/ are local examples/templates for the registry.
+    env:
+      SKILL: agentverse-openclaw
+      SLUG: agentverse-cli
+      DISPLAY_NAME: "AgentVerse CLI"
 
     steps:
       - uses: actions/checkout@v4
@@ -60,14 +50,13 @@ jobs:
         id: check
         if: steps.token_check.outputs.has_token == 'true'
         run: |
-          SKILL_DIR="skills/${{ matrix.skill }}"
+          SKILL_DIR="skills/${SKILL}"
           if [ ! -f "$SKILL_DIR/SKILL.md" ]; then
             echo "::warning::No SKILL.md found in $SKILL_DIR, skipping"
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
             echo "skill_dir=$SKILL_DIR" >> "$GITHUB_OUTPUT"
-            # Extract version from SKILL.md frontmatter
             VERSION=$(grep '^version:' "$SKILL_DIR/SKILL.md" | head -1 | sed 's/version: *//')
             echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           fi
@@ -82,11 +71,11 @@ jobs:
       - name: Publish to ClawHub
         if: steps.token_check.outputs.has_token == 'true' && steps.check.outputs.skip == 'false'
         run: |
-          echo "Publishing ${{ matrix.skill }} (slug: ${{ matrix.slug }}) v${{ steps.check.outputs.version }} to ClawHub..."
+          echo "Publishing ${SKILL} (slug: ${SLUG}) v${{ steps.check.outputs.version }} to ClawHub..."
           npx clawhub@latest publish "${{ steps.check.outputs.skill_dir }}" \
-            --slug "${{ matrix.slug }}" \
-            --name "${{ matrix.display_name }}" \
+            --slug "${SLUG}" \
+            --name "${DISPLAY_NAME}" \
             --version "${{ steps.check.outputs.version }}" \
             --tags "latest" \
             --changelog ""
-          echo "✓ Published ${{ matrix.slug }} v${{ steps.check.outputs.version }}"
+          echo "✓ Published ${SLUG} v${{ steps.check.outputs.version }}"

@@ -29,6 +29,7 @@ anyhow = { workspace = true }
 utoipa = { workspace = true }
 utoipa-swagger-ui = { workspace = true }
 sha2 = "0.10"
+semver = { workspace = true }
 
 [dev-dependencies]
 http-body-util = "0.1"

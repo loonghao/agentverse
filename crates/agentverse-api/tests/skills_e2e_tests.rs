@@ -739,3 +739,123 @@ fn extract_zip_subpath_errors_when_path_not_found() {
         "should error when skill_path not in archive"
     );
 }
+
+// ── parse_skill_md full frontmatter tests ────────────────────────────────────
+
+#[cfg(test)]
+mod parse_skill_md_tests {
+    use agentverse_skills::parse_skill_md;
+
+    /// The standard simple format: scalar fields + inline tag list.
+    const SIMPLE_SKILL: &str = "---\n\
+        name: ripgrep-search\n\
+        description: Blazing-fast code search using ripgrep.\n\
+        version: \"0.1.0\"\n\
+        tags: [search, code, cli, productivity]\n\
+        license: MIT\n\
+        ---\n\
+        # Ripgrep Search";
+
+    /// Advanced format: metadata.openclaw block, no top-level tags.
+    const OPENCLAW_SKILL: &str = "---\n\
+        name: agentverse-cli\n\
+        description: \"Manage AI skills from the command line.\"\n\
+        version: 0.1.4\n\
+        metadata:\n\
+          openclaw:\n\
+            homepage: https://github.com/loonghao/agentverse\n\
+            emoji: \"\\U0001F916\"\n\
+            requires:\n\
+              bins:\n\
+                - agentverse\n\
+              env:\n\
+                - AGENTVERSE_TOKEN\n\
+            install:\n\
+              - kind: shell\n\
+                linux: \"curl -fsSL https://example.com/install.sh | bash\"\n\
+                windows: \"irm https://example.com/install.ps1 | iex\"\n\
+        ---\n\
+        # AgentVerse CLI";
+
+    /// Skill with multiline tag list (block sequence).
+    const MULTILINE_TAGS_SKILL: &str = "---\n\
+        name: jq-processor\n\
+        description: Transform JSON with jq.\n\
+        tags:\n\
+          - json\n\
+          - data\n\
+          - cli\n\
+        ---";
+
+    /// No frontmatter at all — should fall back to the provided name.
+    const NO_FRONTMATTER: &str = "# Just a skill\nNo frontmatter here.";
+
+    /// Frontmatter missing the name field — should use fallback.
+    const MISSING_NAME: &str = "---\ndescription: A skill without a name.\ntags: [orphan]\n---";
+
+    #[test]
+    fn simple_skill_all_fields_extracted() {
+        let p = parse_skill_md(SIMPLE_SKILL, "fallback");
+        assert_eq!(p.name, "ripgrep-search");
+        assert_eq!(
+            p.description.as_deref(),
+            Some("Blazing-fast code search using ripgrep.")
+        );
+        assert_eq!(p.version.as_deref(), Some("0.1.0"));
+        assert_eq!(p.tags, ["search", "code", "cli", "productivity"]);
+        assert_eq!(p.license.as_deref(), Some("MIT"));
+        assert!(p.metadata.is_null(), "no metadata block expected");
+    }
+
+    #[test]
+    fn openclaw_metadata_block_parsed_as_json() {
+        let p = parse_skill_md(OPENCLAW_SKILL, "fallback");
+        assert_eq!(p.name, "agentverse-cli");
+        assert_eq!(p.version.as_deref(), Some("0.1.4"));
+        // homepage promoted from metadata.openclaw.homepage
+        assert_eq!(
+            p.homepage.as_deref(),
+            Some("https://github.com/loonghao/agentverse")
+        );
+        // metadata block is a JSON object
+        let meta = &p.metadata;
+        assert!(meta.is_object(), "metadata must be a JSON object");
+        // openclaw.requires.bins contains "agentverse"
+        assert_eq!(meta["openclaw"]["requires"]["bins"][0], "agentverse");
+        // openclaw.requires.env contains "AGENTVERSE_TOKEN"
+        assert_eq!(meta["openclaw"]["requires"]["env"][0], "AGENTVERSE_TOKEN");
+        // install instructions present
+        assert!(meta["openclaw"]["install"].is_array());
+    }
+
+    #[test]
+    fn multiline_tags_parsed_correctly() {
+        let p = parse_skill_md(MULTILINE_TAGS_SKILL, "fallback");
+        assert_eq!(p.name, "jq-processor");
+        assert_eq!(p.tags, ["json", "data", "cli"]);
+    }
+
+    #[test]
+    fn no_frontmatter_uses_fallback_name() {
+        let p = parse_skill_md(NO_FRONTMATTER, "my-fallback");
+        assert_eq!(p.name, "my-fallback");
+        assert!(p.description.is_none());
+        assert!(p.tags.is_empty());
+        assert!(p.metadata.is_null());
+    }
+
+    #[test]
+    fn missing_name_uses_fallback() {
+        let p = parse_skill_md(MISSING_NAME, "path-fallback");
+        assert_eq!(p.name, "path-fallback");
+        assert_eq!(p.description.as_deref(), Some("A skill without a name."));
+        assert_eq!(p.tags, ["orphan"]);
+    }
+
+    #[test]
+    fn unquoted_version_parsed_as_string() {
+        // version: 0.1.4 (no quotes) should still produce "0.1.4"
+        let p = parse_skill_md(OPENCLAW_SKILL, "fallback");
+        assert_eq!(p.version.as_deref(), Some("0.1.4"));
+    }
+}
