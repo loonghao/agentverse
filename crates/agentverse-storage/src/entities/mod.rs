@@ -6,4 +6,6 @@ pub mod event;
 pub mod like;
 pub mod prelude;
 pub mod rating;
+pub mod skill_install;
+pub mod skill_package;
 pub mod user;

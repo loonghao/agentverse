@@ -12,6 +12,7 @@ members = [
     "crates/agentverse-search",
     "crates/agentverse-events",
     "crates/agentverse-updater",
+    "crates/agentverse-skills",
 ]
 
 [workspace.package]
@@ -89,6 +90,16 @@ async-graphql-axum = { version = "7" }
 config = { version = "0.14" }
 dotenvy = { version = "0.15" }
 
+# HTTP client (used by agentverse-skills backends and updater)
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+# Archive extraction
+zip = { version = "2", default-features = false, features = ["deflate"] }
+# Temp file / dir utilities (used in tests)
+tempfile = { version = "3" }
+flate2 = { version = "1" }
+tar = { version = "0.4" }
+# Hashing
+sha2 = { version = "0.10" }
 # Internal crates
 agentverse-core = { path = "crates/agentverse-core" }
 agentverse-storage = { path = "crates/agentverse-storage" }
@@ -99,6 +110,7 @@ agentverse-social = { path = "crates/agentverse-social" }
 agentverse-search = { path = "crates/agentverse-search" }
 agentverse-events = { path = "crates/agentverse-events" }
 agentverse-updater = { path = "crates/agentverse-updater" }
+agentverse-skills = { path = "crates/agentverse-skills" }
 
 [profile.release]
 opt-level = 3

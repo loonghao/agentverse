@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use agentverse_auth::JwtManager;
 use agentverse_core::repository::{
-    ArtifactRepository, SocialRepository, UserRepository, VersionRepository,
+    ArtifactRepository, SkillInstallRepository, SkillPackageRepository, SocialRepository,
+    UserRepository, VersionRepository,
 };
 use agentverse_events::EventSink;
 use agentverse_search::{FullTextSearch, SemanticSearch};
@@ -19,6 +20,10 @@ pub struct AppState {
     pub semantic: Arc<SemanticSearch>,
     pub jwt: Arc<JwtManager>,
     pub config: Arc<AppConfig>,
+    /// Skill package metadata (source, download URL, checksum).
+    pub skill_packages: Arc<dyn SkillPackageRepository>,
+    /// Records of where skills are installed per agent runtime.
+    pub skill_installs: Arc<dyn SkillInstallRepository>,
 }
 
 #[derive(Debug, Clone)]

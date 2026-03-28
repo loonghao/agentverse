@@ -18,7 +18,9 @@ use agentverse_api::{
 use agentverse_auth::JwtManager;
 use agentverse_events::EventStore;
 use agentverse_search::{FullTextSearch, SemanticSearch};
-use agentverse_storage::{ArtifactRepo, Database, SocialRepo, UserRepo, VersionRepo};
+use agentverse_storage::{
+    ArtifactRepo, Database, SkillInstallRepo, SkillPackageRepo, SocialRepo, UserRepo, VersionRepo,
+};
 
 // ── CLI args ──────────────────────────────────────────────────────────────────
 
@@ -129,6 +131,8 @@ async fn main() -> anyhow::Result<()> {
             config.access_token_expiry_secs,
         )),
         config: Arc::new(config),
+        skill_packages: Arc::new(SkillPackageRepo::new(db.clone())),
+        skill_installs: Arc::new(SkillInstallRepo::new(db.clone())),
     };
 
     let app = build_router(state.clone())

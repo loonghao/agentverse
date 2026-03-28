@@ -1,6 +1,7 @@
 pub mod artifacts;
 pub mod auth;
 pub mod health;
+pub mod skills;
 pub mod social;
 pub mod versions;
 
@@ -37,6 +38,8 @@ fn auth_routes() -> Router<AppState> {
 
 fn artifact_routes() -> Router<AppState> {
     Router::new()
+        // Trending — must come before /{kind} to avoid conflict
+        .route("/api/v1/trending", get(artifacts::trending_artifacts))
         // Search (must come before /{kind} to avoid conflict)
         .route("/api/v1/search", get(artifacts::search_artifacts))
         .route("/api/v1/search/semantic", post(artifacts::semantic_search))
@@ -121,6 +124,42 @@ fn artifact_routes() -> Router<AppState> {
         .route(
             "/api/v1/{kind}/{namespace}/{name}/benchmark",
             post(social::record_benchmark),
+        )
+        // Skill-specific: one-click GitHub import, package management, agent install.
+        // Static sub-paths must be registered BEFORE the dynamic /{kind}/... routes.
+        .route(
+            "/api/v1/skills/import",
+            post(skills::import_skill),
+        )
+        // Skills installed for a specific agent runtime.
+        // Must come before /{namespace}/{name} to prevent `agents` being parsed as namespace.
+        .route(
+            "/api/v1/skills/agents/{agent_kind}",
+            get(skills::list_skills_for_agent),
+        )
+        // Package collection
+        .route(
+            "/api/v1/skills/{namespace}/{name}/packages",
+            get(skills::list_packages).post(skills::register_package),
+        )
+        // Package by ID
+        .route(
+            "/api/v1/skills/{namespace}/{name}/packages/{package_id}",
+            get(skills::get_package).delete(skills::delete_package),
+        )
+        // Packages for a specific semver
+        .route(
+            "/api/v1/skills/{namespace}/{name}/versions/{version}/packages",
+            get(skills::list_packages_for_version),
+        )
+        // Install records for a skill
+        .route(
+            "/api/v1/skills/{namespace}/{name}/installs",
+            get(skills::list_installs),
+        )
+        .route(
+            "/api/v1/skills/{namespace}/{name}/install",
+            post(skills::install_skill),
         )
         // Artifact CRUD (must come after sub-path routes)
         .route(

@@ -1,0 +1,33 @@
+[package]
+name = "agentverse-skills"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Multi-backend skill package provider, publish hooks, and agent deployment logic"
+
+[dependencies]
+agentverse-core = { workspace = true }
+
+# HTTP downloads
+reqwest       = { workspace = true }
+# Archive extraction
+zip           = { workspace = true }
+flate2        = { workspace = true }
+tar           = { workspace = true }
+# Checksum
+sha2          = { workspace = true }
+
+serde         = { workspace = true }
+serde_json    = { workspace = true }
+uuid          = { workspace = true }
+chrono        = { workspace = true }
+thiserror     = { workspace = true }
+anyhow        = { workspace = true }
+async-trait   = { workspace = true }
+tokio         = { workspace = true }
+tracing       = { workspace = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+

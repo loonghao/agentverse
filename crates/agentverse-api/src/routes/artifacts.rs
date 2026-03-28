@@ -31,6 +31,15 @@ pub struct ListQuery {
     pub offset: Option<u64>,
 }
 
+/// Query parameters for the trending endpoint.
+#[derive(Debug, Deserialize)]
+pub struct TrendingQuery {
+    /// Filter by artifact kind (e.g. "skill", "agent").
+    pub kind: Option<String>,
+    /// Maximum number of results to return (default: 20, max: 100).
+    pub limit: Option<u64>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct SearchQuery {
     pub q: String,
@@ -552,6 +561,72 @@ pub async fn semantic_search(
             ))
         }
     }
+}
+
+/// GET /api/v1/trending?kind=skill&limit=20
+///
+/// Returns the most popular artifacts ranked by a composite engagement score:
+///
+///   score = downloads + likes * 2 + ratings_count * 3 + avg_rating * 10
+///
+/// This endpoint is intentionally fast — it loads all active artifacts in one
+/// shot and sorts them in-process.  A production system would maintain a
+/// pre-computed `trending_score` column updated by a background job.
+pub async fn trending_artifacts(
+    Query(params): Query<TrendingQuery>,
+    State(state): State<AppState>,
+) -> ApiResult<impl IntoResponse> {
+    let limit = params.limit.unwrap_or(20).min(100) as usize;
+
+    // Build a broad filter — kind is optional.
+    let kind = params
+        .kind
+        .as_deref()
+        .map(parse_kind)
+        .transpose()?;
+
+    let filter = ArtifactFilter {
+        kind,
+        status: Some(agentverse_core::artifact::ArtifactStatus::Active),
+        limit: Some(500), // pull a generous pool to rank within
+        ..Default::default()
+    };
+
+    let artifacts = state.artifacts.list(filter).await?;
+
+    // Fetch social stats for each artifact and compute a composite score.
+    let mut scored: Vec<(Artifact, f64, agentverse_core::repository::ArtifactStats)> = Vec::with_capacity(artifacts.len());
+    for a in artifacts {
+        let stats = state.social.get_stats(a.id).await.unwrap_or_default();
+        let score = a.downloads as f64
+            + stats.likes_count as f64 * 2.0
+            + stats.ratings_count as f64 * 3.0
+            + stats.avg_rating.unwrap_or(0.0) * 10.0;
+        scored.push((a, score, stats));
+    }
+
+    // Sort descending by score.
+    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    scored.truncate(limit);
+
+    let items: Vec<serde_json::Value> = scored
+        .into_iter()
+        .map(|(a, score, stats)| {
+            serde_json::json!({
+                "artifact":       a,
+                "score":          score,
+                "downloads":      a.downloads,
+                "likes_count":    stats.likes_count,
+                "ratings_count":  stats.ratings_count,
+                "avg_rating":     stats.avg_rating,
+            })
+        })
+        .collect();
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({ "items": items, "total": items.len() })),
+    ))
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
