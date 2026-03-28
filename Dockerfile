@@ -1,47 +1,43 @@
-# ── Build stage ──────────────────────────────────────────────────────────────
-FROM rust:1.88-slim AS builder
+# ── Stage 0: Base image with system deps + cargo-chef ────────────────────────
+# cargo-chef separates dependency compilation from application code compilation,
+# so that Docker layer caching works correctly and build scripts (e.g. the
+# utoipa-swagger-ui downloader) run exactly once per dependency change.
+FROM rust:1.88-slim AS chef
 
 WORKDIR /app
 
-# Install build dependencies
-# curl is required by utoipa-swagger-ui build script to download Swagger UI assets
-RUN apt-get update && apt-get install -y pkg-config libssl-dev curl && rm -rf /var/lib/apt/lists/*
+# pkg-config + libssl-dev: required by TLS crates (rustls, ring, openssl-sys)
+# curl: required by utoipa-swagger-ui build script to download Swagger UI assets
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends pkg-config libssl-dev curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && cargo install cargo-chef --locked
 
-# Cache dependencies by copying manifests first
-COPY Cargo.toml Cargo.lock ./
-COPY apps/server/Cargo.toml ./apps/server/
-COPY apps/cli/Cargo.toml    ./apps/cli/
-COPY crates/agentverse-core/Cargo.toml        ./crates/agentverse-core/
-COPY crates/agentverse-storage/Cargo.toml     ./crates/agentverse-storage/
-COPY crates/agentverse-api/Cargo.toml         ./crates/agentverse-api/
-COPY crates/agentverse-auth/Cargo.toml        ./crates/agentverse-auth/
-COPY crates/agentverse-versioning/Cargo.toml  ./crates/agentverse-versioning/
-COPY crates/agentverse-social/Cargo.toml      ./crates/agentverse-social/
-COPY crates/agentverse-search/Cargo.toml      ./crates/agentverse-search/
-COPY crates/agentverse-events/Cargo.toml      ./crates/agentverse-events/
+# ── Stage 1: Compute the dependency recipe ───────────────────────────────────
+FROM chef AS planner
 
-# Create stub lib files to build deps only
-RUN mkdir -p apps/server/src apps/cli/src \
-    crates/agentverse-core/src \
-    crates/agentverse-storage/src \
-    crates/agentverse-api/src \
-    crates/agentverse-auth/src \
-    crates/agentverse-versioning/src \
-    crates/agentverse-social/src \
-    crates/agentverse-search/src \
-    crates/agentverse-events/src && \
-    echo "fn main(){}" > apps/server/src/main.rs && \
-    echo "fn main(){}" > apps/cli/src/main.rs && \
-    for d in core storage api auth versioning social search events; do \
-        echo "" > crates/agentverse-$d/src/lib.rs; \
-    done
-
-RUN cargo build --release --bin agentverse-server
-
-# Copy real source and rebuild (only changed code recompiles)
 COPY . .
-RUN touch apps/server/src/main.rs && \
-    cargo build --release --bin agentverse-server
+# Produce a minimal recipe.json that captures only the dependency graph,
+# not application source code, so the cook layer is invalidated only when
+# Cargo.toml / Cargo.lock change.
+RUN cargo chef prepare --recipe-path recipe.json
+
+# ── Stage 2: Cook (pre-build) all dependencies ────────────────────────────────
+FROM chef AS builder
+
+COPY --from=planner /app/recipe.json recipe.json
+
+# Build every dependency declared in the workspace.
+# This is the layer that's cached: utoipa-swagger-ui downloads Swagger UI
+# assets here (via curl), and the result is reused on every subsequent build
+# that doesn't touch Cargo.toml / Cargo.lock.
+RUN cargo chef cook --release --recipe-path recipe.json
+
+# Copy real application source and compile only the changed code.
+# Dependencies are already built in the layer above — only workspace crates
+# and the final binary need to be compiled here.
+COPY . .
+RUN cargo build --release --bin agentverse-server
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 FROM debian:bookworm-slim AS runtime
