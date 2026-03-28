@@ -112,6 +112,19 @@ mod tests {
     // ── Factory ────────────────────────────────────────────────────────────────
 
     #[test]
+    fn build_github_backend_returns_github_release_backend() {
+        let cfg = ObjectStoreConfig {
+            backend: ObjectStoreBackend::GitHub(config::GitHubConfig {
+                owner: "testowner".into(),
+                repo: "testrepo".into(),
+                token: None,
+            }),
+        };
+        let store = build_object_store(&cfg).expect("github backend should build");
+        assert_eq!(store.backend_name(), "github_release");
+    }
+
+    #[test]
     fn build_local_backend_returns_local_backend() {
         let cfg = ObjectStoreConfig {
             backend: ObjectStoreBackend::Local(LocalConfig {
@@ -222,6 +235,85 @@ mod tests {
                 );
             }
             other => panic!("expected Custom, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn deserialize_github_backend_config() {
+        let json = serde_json::json!({
+            "backend": "github",
+            "owner": "myorg",
+            "repo": "myrepo",
+            "token": "ghp_fake_token"
+        });
+        let cfg: ObjectStoreConfig = serde_json::from_value(json).expect("must deserialise");
+        match cfg.backend {
+            ObjectStoreBackend::GitHub(gh) => {
+                assert_eq!(gh.owner, "myorg");
+                assert_eq!(gh.repo, "myrepo");
+                assert_eq!(gh.token.as_deref(), Some("ghp_fake_token"));
+            }
+            other => panic!("expected GitHub, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn deserialize_github_backend_config_without_token() {
+        let json = serde_json::json!({
+            "backend": "github",
+            "owner": "testowner",
+            "repo": "testrepo"
+        });
+        let cfg: ObjectStoreConfig = serde_json::from_value(json).expect("must deserialise");
+        match cfg.backend {
+            ObjectStoreBackend::GitHub(gh) => {
+                assert!(gh.token.is_none(), "token should be None when not provided");
+            }
+            other => panic!("expected GitHub, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn deserialize_s3_backend_config_minimal() {
+        let json = serde_json::json!({
+            "backend": "s3",
+            "bucket": "my-bucket",
+            "region": "us-east-1",
+            "access_key": "AKIAIOSFODNN7EXAMPLE",
+            "secret_key": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+        });
+        let cfg: ObjectStoreConfig = serde_json::from_value(json).expect("must deserialise");
+        match cfg.backend {
+            ObjectStoreBackend::S3(s3) => {
+                assert_eq!(s3.bucket, "my-bucket");
+                assert_eq!(s3.region, "us-east-1");
+                assert!(s3.endpoint.is_none());
+                assert!(!s3.force_path_style);
+            }
+            other => panic!("expected S3, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn deserialize_s3_backend_config_with_endpoint_and_path_style() {
+        let json = serde_json::json!({
+            "backend": "s3",
+            "bucket": "minio-bucket",
+            "region": "us-east-1",
+            "access_key": "minioadmin",
+            "secret_key": "minioadmin",
+            "endpoint": "http://minio.local:9000",
+            "force_path_style": true,
+            "presigned_expiry_secs": 3600
+        });
+        let cfg: ObjectStoreConfig = serde_json::from_value(json).expect("must deserialise");
+        match cfg.backend {
+            ObjectStoreBackend::S3(s3) => {
+                assert_eq!(s3.endpoint.as_deref(), Some("http://minio.local:9000"));
+                assert!(s3.force_path_style);
+                assert_eq!(s3.presigned_expiry_secs, 3600);
+            }
+            other => panic!("expected S3, got {other:?}"),
         }
     }
 }

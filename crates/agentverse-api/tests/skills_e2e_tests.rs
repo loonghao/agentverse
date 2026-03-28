@@ -154,6 +154,32 @@ async fn create_skill(app: &axum::Router, token: &str, name: &str) -> uuid::Uuid
     json["artifact"]["id"].as_str().unwrap().parse().unwrap()
 }
 
+/// Helper: create a skill and register one Clawhub package; returns the package UUID string.
+async fn register_one_package(app: &axum::Router, token: &str, skill_name: &str) -> String {
+    create_skill(app, token, skill_name).await;
+    let resp = app
+        .clone()
+        .oneshot(json_req(
+            "POST",
+            &format!("/api/v1/skills/testorg/{skill_name}/packages"),
+            serde_json::json!({
+                "source_type": "clawhub",
+                "download_url": format!("https://hub.openclaw.io/skills/testorg/{skill_name}/0.1.0.zip"),
+                "checksum": "aabbccdd"
+            }),
+            Some(token),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::CREATED,
+        "register_one_package failed"
+    );
+    let json = body_json(resp).await;
+    json["package"]["id"].as_str().unwrap().to_string()
+}
+
 // ── Lifecycle: register + list packages ───────────────────────────────────────
 
 #[tokio::test]
@@ -1394,4 +1420,199 @@ async fn import_skill_description_is_populated() {
         desc.contains("ripgrep"),
         "description should contain 'ripgrep', got: {desc}"
     );
+}
+
+// ── Package CRUD + install record routes ─────────────────────────────────────
+
+#[tokio::test]
+async fn get_package_by_id_returns_200() {
+    let (app, _state) = build_test_app_with_state();
+    let (_uid, token) = register_and_login(&app).await;
+    let pkg_id = register_one_package(&app, &token, "pkg-get-skill").await;
+
+    let resp = app
+        .oneshot(json_req(
+            "GET",
+            &format!("/api/v1/skills/testorg/pkg-get-skill/packages/{pkg_id}"),
+            serde_json::Value::Null,
+            Some(&token),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    assert_eq!(json["package"]["id"].as_str().unwrap(), pkg_id);
+    assert_eq!(json["package"]["source_type"].as_str().unwrap(), "clawhub");
+}
+
+#[tokio::test]
+async fn get_package_unknown_id_returns_404() {
+    let (app, _state) = build_test_app_with_state();
+    let (_uid, token) = register_and_login(&app).await;
+    create_skill(&app, &token, "get-404-skill").await;
+
+    let fake_id = uuid::Uuid::new_v4();
+    let resp = app
+        .oneshot(json_req(
+            "GET",
+            &format!("/api/v1/skills/testorg/get-404-skill/packages/{fake_id}"),
+            serde_json::Value::Null,
+            Some(&token),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn delete_package_removes_it_and_subsequent_get_returns_404() {
+    let (app, _state) = build_test_app_with_state();
+    let (_uid, token) = register_and_login(&app).await;
+    let pkg_id = register_one_package(&app, &token, "del-pkg-skill").await;
+
+    // Delete the package.
+    let del_resp = app
+        .clone()
+        .oneshot(json_req(
+            "DELETE",
+            &format!("/api/v1/skills/testorg/del-pkg-skill/packages/{pkg_id}"),
+            serde_json::Value::Null,
+            Some(&token),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(del_resp.status(), StatusCode::OK);
+
+    // Get should now return 404.
+    let get_resp = app
+        .oneshot(json_req(
+            "GET",
+            &format!("/api/v1/skills/testorg/del-pkg-skill/packages/{pkg_id}"),
+            serde_json::Value::Null,
+            Some(&token),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(get_resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn list_packages_for_version_returns_registered_package() {
+    let (app, _state) = build_test_app_with_state();
+    let (_uid, token) = register_and_login(&app).await;
+    let pkg_id = register_one_package(&app, &token, "ver-pkg-skill").await;
+
+    // The default version created by create_skill is "0.1.0".
+    let resp = app
+        .oneshot(json_req(
+            "GET",
+            "/api/v1/skills/testorg/ver-pkg-skill/versions/0.1.0/packages",
+            serde_json::Value::Null,
+            Some(&token),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    let packages = json["packages"].as_array().unwrap();
+    assert!(
+        !packages.is_empty(),
+        "should return at least one package for version 0.1.0"
+    );
+    assert!(
+        packages
+            .iter()
+            .any(|p| p["id"].as_str().unwrap_or("") == pkg_id),
+        "registered package {pkg_id} should appear in version package list"
+    );
+}
+
+#[tokio::test]
+async fn list_packages_for_unknown_version_returns_404() {
+    let (app, _state) = build_test_app_with_state();
+    let (_uid, token) = register_and_login(&app).await;
+    create_skill(&app, &token, "empty-ver-skill").await;
+
+    // Version 99.0.0 was never published → handler returns 404.
+    let resp = app
+        .oneshot(json_req(
+            "GET",
+            "/api/v1/skills/testorg/empty-ver-skill/versions/99.0.0/packages",
+            serde_json::Value::Null,
+            Some(&token),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn list_installs_returns_empty_list_for_new_skill() {
+    let (app, _state) = build_test_app_with_state();
+    let (_uid, token) = register_and_login(&app).await;
+    create_skill(&app, &token, "install-list-skill").await;
+
+    let resp = app
+        .oneshot(json_req(
+            "GET",
+            "/api/v1/skills/testorg/install-list-skill/installs",
+            serde_json::Value::Null,
+            Some(&token),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    let empty = vec![];
+    let installs = json["installs"].as_array().unwrap_or(&empty);
+    assert!(
+        installs.is_empty(),
+        "no installs recorded yet, list should be empty"
+    );
+}
+
+#[tokio::test]
+async fn list_skills_for_agent_returns_empty_when_no_installs() {
+    let (app, _state) = build_test_app_with_state();
+    let (_uid, token) = register_and_login(&app).await;
+
+    let resp = app
+        .oneshot(json_req(
+            "GET",
+            "/api/v1/skills/agents/claude",
+            serde_json::Value::Null,
+            Some(&token),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    let empty = vec![];
+    let skills = json.as_array().unwrap_or(&empty);
+    assert!(skills.is_empty(), "no installs yet — list should be empty");
+}
+
+#[tokio::test]
+async fn list_skills_for_agent_anonymous_read_allowed() {
+    let (app, _state) = build_test_app_with_state();
+
+    // The test app has `anonymous_read: true`, so an unauthenticated GET
+    // returns 200 with an empty list rather than 401.
+    let resp = app
+        .oneshot(json_req(
+            "GET",
+            "/api/v1/skills/agents/augment",
+            serde_json::Value::Null,
+            None,
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
 }
