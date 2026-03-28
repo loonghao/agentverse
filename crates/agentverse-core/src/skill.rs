@@ -11,10 +11,10 @@ use uuid::Uuid;
 
 /// The storage backend that hosts the skill package archive.
 ///
-/// Two GitHub modes exist:
-/// - `GitHub` — release asset at `releases/download/{tag}/{asset}.zip`
-/// - `GitHubRepo` — skill directory inside a repo (`tree/{ref}/{path}`),
-///   as used by `anthropics/skills` and `vercel-labs/agent-skills`.
+/// External backends (Clawhub, GitHub, GitHubRepo, Url) reference packages
+/// hosted outside this registry.  The `Internal` variant means the archive is
+/// stored in the registry's own object store (S3/COS/MinIO/local-disk/etc.)
+/// and the `download_url` field holds the canonical URL returned by that store.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SourceType {
@@ -29,6 +29,13 @@ pub enum SourceType {
     GitHubRepo,
     /// Generic HTTP/HTTPS URL (custom hosting)
     Url,
+    /// Package hosted in the registry's own object store.
+    ///
+    /// The `download_url` on the `SkillPackage` is the pre-signed or public URL
+    /// returned by the configured `ObjectStore` backend at upload time.
+    /// At install time this is treated identically to `Url` — the existing
+    /// `UrlBackend` handles the HTTP download transparently.
+    Internal,
 }
 
 impl std::fmt::Display for SourceType {
@@ -38,6 +45,7 @@ impl std::fmt::Display for SourceType {
             SourceType::GitHub => write!(f, "github"),
             SourceType::GitHubRepo => write!(f, "github_repo"),
             SourceType::Url => write!(f, "url"),
+            SourceType::Internal => write!(f, "internal"),
         }
     }
 }
@@ -50,6 +58,7 @@ impl std::str::FromStr for SourceType {
             "github" => Ok(SourceType::GitHub),
             "github_repo" => Ok(SourceType::GitHubRepo),
             "url" => Ok(SourceType::Url),
+            "internal" => Ok(SourceType::Internal),
             other => Err(format!("unknown source_type: {other}")),
         }
     }

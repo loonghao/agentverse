@@ -496,6 +496,21 @@ fn make_mock_state(users: Arc<dyn UserRepository>) -> AppState {
         config: Arc::new(config),
         skill_packages: Arc::new(InMemorySkillPackageRepo::new()),
         skill_installs: Arc::new(InMemorySkillInstallRepo::new()),
+        // Use the local-disk backend with a temp dir for integration tests.
+        object_store: {
+            use agentverse_storage::object_store::{
+                backends::local::LocalDiskBackend, config::LocalConfig,
+            };
+            let tmp = std::env::temp_dir().join("agentverse-test-packages");
+            std::fs::create_dir_all(&tmp).ok();
+            Some(std::sync::Arc::new(
+                LocalDiskBackend::new(LocalConfig {
+                    base_dir: tmp,
+                    serve_url: "http://localhost:8080/files".into(),
+                })
+                .expect("local test object store"),
+            ))
+        },
     }
 }
 

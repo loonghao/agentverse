@@ -92,7 +92,7 @@ config = { version = "0.14" }
 dotenvy = { version = "0.15" }
 
 # HTTP client (used by agentverse-skills backends and updater)
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "multipart"] }
 # Archive extraction
 zip = { version = "2", default-features = false, features = ["deflate"] }
 # Temp file / dir utilities (used in tests)
@@ -101,6 +101,10 @@ flate2 = { version = "1" }
 tar = { version = "0.4" }
 # Hashing
 sha2 = { version = "0.10" }
+# Object storage (S3/COS/MinIO/local) — Apache Arrow project
+object_store = { version = "0.11", features = ["aws", "http"] }
+# Raw bytes buffer (used by object store trait)
+bytes = { version = "1" }
 # Internal crates
 agentverse-core = { path = "crates/agentverse-core" }
 agentverse-storage = { path = "crates/agentverse-storage" }

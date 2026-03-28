@@ -19,6 +19,16 @@ pub fn build_router(_state: AppState) -> Router<AppState> {
         .route("/ready", get(health::readiness_check))
         .merge(auth_routes())
         .merge(artifact_routes())
+        .merge(files_routes())
+}
+
+/// Static file serving for the `local` object store backend.
+///
+/// `GET /files/{*key}` maps to `{object_store.local.base_dir}/{key}`.
+/// This route is always registered; it returns 404 unless `base_dir` is
+/// configured and the file exists.
+fn files_routes() -> Router<AppState> {
+    Router::new().route("/files/{*key}", get(skills::serve_local_file))
 }
 
 fn auth_routes() -> Router<AppState> {
@@ -157,6 +167,11 @@ fn artifact_routes() -> Router<AppState> {
         .route(
             "/api/v1/skills/{namespace}/{name}/install",
             post(skills::install_skill),
+        )
+        // Internal upload: CLI pushes a zip → ObjectStore
+        .route(
+            "/api/v1/skills/{namespace}/{name}/upload",
+            post(skills::upload_skill_package),
         )
         // Artifact CRUD (must come after sub-path routes)
         .route(

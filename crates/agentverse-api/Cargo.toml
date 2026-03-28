@@ -12,6 +12,7 @@ agentverse-auth = { workspace = true }
 agentverse-events = { workspace = true }
 agentverse-search = { workspace = true }
 agentverse-skills = { workspace = true }
+agentverse-storage = { workspace = true }
 
 axum = { workspace = true }
 tower = { workspace = true }
@@ -28,14 +29,14 @@ tracing = { workspace = true }
 anyhow = { workspace = true }
 utoipa = { workspace = true }
 utoipa-swagger-ui = { workspace = true }
-sha2 = "0.10"
+sha2 = { workspace = true }
 semver = { workspace = true }
+bytes = { workspace = true }
+zip = { workspace = true }
 
 [dev-dependencies]
 http-body-util = "0.1"
 sea-orm = { workspace = true }
-agentverse-storage = { workspace = true }
 tower = { version = "0.5", features = ["util"] }
 tokio = { version = "1", features = ["full"] }
-zip = { workspace = true }
 tempfile = { workspace = true }
