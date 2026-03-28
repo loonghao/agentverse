@@ -352,24 +352,40 @@ jobs:
 
       - name: E2E — create skill
         run: |
-          SKILL=$(curl -sf -X POST "http://localhost:${PORT}/api/v1/skills" \
-            -H "authorization: Bearer ${E2E_TOKEN}" \
-            -H 'content-type: application/json' \
-            -d '{
-              "namespace": "e2eorg",
-              "name": "smoke-skill",
-              "display_name": "E2E Smoke Skill",
-              "manifest": {
-                "description": "Created by E2E test",
+          # Manifest uses the correct nested `capabilities` structure.
+          # `content` is optional (defaults to null) but included for clarity.
+          BODY=$(cat <<'EOF'
+          {
+            "namespace": "e2eorg",
+            "name": "smoke-skill",
+            "display_name": "E2E Smoke Skill",
+            "content": {},
+            "manifest": {
+              "description": "Created by E2E test",
+              "capabilities": {
                 "input_modalities": ["text"],
                 "output_modalities": ["text"],
                 "protocols": ["mcp"],
                 "permissions": []
-              }
-            }')
-          echo "$SKILL" | jq .
-          SKILL_ID=$(echo "$SKILL" | jq -r '.id')
-          [ "$SKILL_ID" != "null" ] && [ -n "$SKILL_ID" ] || (echo "❌ No skill id" && exit 1)
+              },
+              "dependencies": {},
+              "tags": ["e2e", "smoke"],
+              "extra": null
+            }
+          }
+          EOF
+          )
+          RESP=$(curl -s -w '\n%{http_code}' -X POST "http://localhost:${PORT}/api/v1/skills" \
+            -H "authorization: Bearer ${E2E_TOKEN}" \
+            -H 'content-type: application/json' \
+            -d "$BODY")
+          HTTP_CODE=$(echo "$RESP" | tail -1)
+          BODY_OUT=$(echo "$RESP" | head -n -1)
+          echo "$BODY_OUT" | jq .
+          [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ] \
+            || (echo "❌ create skill HTTP $HTTP_CODE" && exit 1)
+          SKILL_ID=$(echo "$BODY_OUT" | jq -r '.id // empty')
+          [ -n "$SKILL_ID" ] || (echo "❌ No skill id in response" && exit 1)
           echo "E2E_SKILL_ID=$SKILL_ID" >> "$GITHUB_ENV"
           echo "✅ create skill OK: $SKILL_ID"
 
@@ -387,19 +403,27 @@ jobs:
 
       - name: "E2E — social: like & comment"
         run: |
-          # Like the skill
-          curl -sf -X POST \
+          # Like the skill — use generic /{kind}/... route
+          LIKE=$(curl -s -w '\n%{http_code}' -X POST \
             "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/likes" \
             -H "authorization: Bearer ${E2E_TOKEN}" \
-            -H 'content-type: application/json' -d '{}' | jq .
+            -H 'content-type: application/json' -d '{}')
+          LIKE_CODE=$(echo "$LIKE" | tail -1)
+          echo "$LIKE" | head -n -1 | jq .
+          [ "$LIKE_CODE" -ge 200 ] && [ "$LIKE_CODE" -lt 300 ] \
+            || (echo "❌ like HTTP $LIKE_CODE" && exit 1)
           echo "✅ like OK"
 
           # Add a comment
-          curl -sf -X POST \
+          CMT=$(curl -s -w '\n%{http_code}' -X POST \
             "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/comments" \
             -H "authorization: Bearer ${E2E_TOKEN}" \
             -H 'content-type: application/json' \
-            -d '{"content":"E2E comment","kind":"review"}' | jq .
+            -d '{"content":"E2E comment","kind":"review"}')
+          CMT_CODE=$(echo "$CMT" | tail -1)
+          echo "$CMT" | head -n -1 | jq .
+          [ "$CMT_CODE" -ge 200 ] && [ "$CMT_CODE" -lt 300 ] \
+            || (echo "❌ comment HTTP $CMT_CODE" && exit 1)
           echo "✅ comment OK"
 
       - name: Dump server logs
