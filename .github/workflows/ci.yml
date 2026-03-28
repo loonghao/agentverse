@@ -384,7 +384,8 @@ jobs:
           echo "$BODY_OUT" | jq .
           [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ] \
             || (echo "❌ create skill HTTP $HTTP_CODE" && exit 1)
-          SKILL_ID=$(echo "$BODY_OUT" | jq -r '.id // empty')
+          # Response shape: { "artifact": { "id": "...", ... }, "version": { ... } }
+          SKILL_ID=$(echo "$BODY_OUT" | jq -r '.artifact.id // empty')
           [ -n "$SKILL_ID" ] || (echo "❌ No skill id in response" && exit 1)
           echo "E2E_SKILL_ID=$SKILL_ID" >> "$GITHUB_ENV"
           echo "✅ create skill OK: $SKILL_ID"
