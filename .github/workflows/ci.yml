@@ -196,10 +196,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Fields every skill format must have (agentverse + clawhub compatible)
-          REQUIRED_FIELDS=(name description version)
-          # Fields recommended for agentverse-native skills (warnings only)
-          RECOMMENDED_FIELDS=(author license)
+          # Only name + description are universally required (matches the standard format).
+          # version, author, license are recommended but optional.
+          REQUIRED_FIELDS=(name description)
+          RECOMMENDED_FIELDS=(version author license)
           ERRORS=0
 
           for skill_md in skills/*/SKILL.md; do
@@ -426,6 +426,65 @@ jobs:
           [ "$CMT_CODE" -ge 200 ] && [ "$CMT_CODE" -lt 300 ] \
             || (echo "❌ comment HTTP $CMT_CODE" && exit 1)
           echo "✅ comment OK"
+
+      # ── Import from GitHub (real SKILL.md parsing) ─────────────────────────
+      - name: "E2E — import skill from GitHub (tags + metadata round-trip)"
+        run: |
+          # Import one of our own skills from the public repo.
+          # This exercises the full parse_skill_md → Manifest pipeline on a live server.
+          IMPORT_RESP=$(curl -s -w '\n%{http_code}' -X POST \
+            "http://localhost:${PORT}/api/v1/skills/import" \
+            -H "authorization: Bearer ${E2E_TOKEN}" \
+            -H 'content-type: application/json' \
+            -d '{
+              "url": "https://github.com/loonghao/agentverse/tree/feat/skills-management/skills/ripgrep-search",
+              "namespace": "e2eorg"
+            }')
+          IMPORT_CODE=$(echo "$IMPORT_RESP" | tail -1)
+          IMPORT_BODY=$(echo "$IMPORT_RESP" | head -n -1)
+          echo "$IMPORT_BODY" | jq .
+          [ "$IMPORT_CODE" -ge 200 ] && [ "$IMPORT_CODE" -lt 300 ] \
+            || (echo "❌ import HTTP $IMPORT_CODE" && exit 1)
+
+          # Verify name was extracted from SKILL.md frontmatter
+          IMPORTED_NAME=$(echo "$IMPORT_BODY" | jq -r '.skill.name // empty')
+          [ "$IMPORTED_NAME" = "ripgrep-search" ] \
+            || (echo "❌ expected name=ripgrep-search, got: $IMPORTED_NAME" && exit 1)
+          echo "✅ import skill OK: name=$IMPORTED_NAME"
+
+          # Verify tags were extracted and stored
+          TAG_COUNT=$(echo "$IMPORT_BODY" | jq '.skill.tags | length')
+          [ "$TAG_COUNT" -ge 1 ] \
+            || (echo "❌ expected tags in imported skill, got none" && exit 1)
+          echo "✅ tags extracted: $(echo "$IMPORT_BODY" | jq -c '.skill.tags')"
+
+          # Verify license was populated
+          LICENSE=$(echo "$IMPORT_BODY" | jq -r '.skill.license // empty')
+          [ -n "$LICENSE" ] \
+            || (echo "❌ expected license field in imported skill" && exit 1)
+          echo "✅ license: $LICENSE"
+
+      - name: "E2E — import agentverse-openclaw skill (metadata.openclaw round-trip)"
+        run: |
+          # Test with a skill that uses the extended metadata.openclaw format
+          IMPORT_RESP=$(curl -s -w '\n%{http_code}' -X POST \
+            "http://localhost:${PORT}/api/v1/skills/import" \
+            -H "authorization: Bearer ${E2E_TOKEN}" \
+            -H 'content-type: application/json' \
+            -d '{
+              "url": "https://github.com/loonghao/agentverse/tree/feat/skills-management/skills/agentverse-openclaw",
+              "namespace": "e2eorg"
+            }')
+          IMPORT_CODE=$(echo "$IMPORT_RESP" | tail -1)
+          IMPORT_BODY=$(echo "$IMPORT_RESP" | head -n -1)
+          echo "$IMPORT_BODY" | jq .
+          [ "$IMPORT_CODE" -ge 200 ] && [ "$IMPORT_CODE" -lt 300 ] \
+            || (echo "❌ import openclaw HTTP $IMPORT_CODE" && exit 1)
+
+          IMPORTED_NAME=$(echo "$IMPORT_BODY" | jq -r '.skill.name // empty')
+          [ "$IMPORTED_NAME" = "agentverse-cli" ] \
+            || (echo "❌ expected name=agentverse-cli, got: $IMPORTED_NAME" && exit 1)
+          echo "✅ import agentverse-openclaw OK: name=$IMPORTED_NAME"
 
       - name: Dump server logs
         if: always()

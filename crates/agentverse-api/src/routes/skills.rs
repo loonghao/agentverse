@@ -29,8 +29,8 @@ use agentverse_core::{
     skill::{AgentKind, SkillPackage, SourceType},
 };
 use agentverse_skills::{
-    all_known_agents, parse_github_tree_url, GitHubRepoBackend, HookRegistry, LoggingHook,
-    MetadataHook,
+    all_known_agents, parse_github_tree_url, parse_skill_md, GitHubRepoBackend, HookRegistry,
+    LoggingHook, MetadataHook,
 };
 
 use crate::{
@@ -343,20 +343,40 @@ pub async fn import_skill(
         ))
     })?;
 
-    let (skill_name, description) = parse_skill_md(&skill_md, &info.skill_path);
+    // Parse the full SKILL.md frontmatter — tags, metadata, version, etc.
+    let fallback_name = info
+        .skill_path
+        .split('/')
+        .next_back()
+        .unwrap_or("unknown-skill")
+        .to_owned();
+    let parsed = parse_skill_md(&skill_md, &fallback_name);
     let namespace = req.namespace.unwrap_or_else(|| info.owner.clone());
+
+    // Merge github_repo source metadata with the skill's own metadata block.
+    let mut extra = info.to_metadata_json();
+    if let (Some(obj), serde_json::Value::Object(skill_meta)) =
+        (extra.as_object_mut(), &parsed.metadata)
+    {
+        for (k, v) in skill_meta {
+            obj.entry(k).or_insert_with(|| v.clone());
+        }
+    }
 
     // Resolve or create the skill artifact
     let (artifact, created) = match state
         .artifacts
-        .find_by_namespace_name(&ArtifactKind::Skill, &namespace, &skill_name)
+        .find_by_namespace_name(&ArtifactKind::Skill, &namespace, &parsed.name)
         .await?
     {
         Some(existing) => (existing, false),
         None => {
             let manifest = Manifest {
-                description: description.clone().unwrap_or_default(),
-                extra: info.to_metadata_json(),
+                description: parsed.description.clone().unwrap_or_default(),
+                tags: parsed.tags.clone(),
+                homepage: parsed.homepage.clone(),
+                license: parsed.license.clone(),
+                extra,
                 ..Default::default()
             };
 
@@ -364,7 +384,7 @@ pub async fn import_skill(
                 id: Uuid::new_v4(),
                 kind: ArtifactKind::Skill,
                 namespace: namespace.clone(),
-                name: skill_name.clone(),
+                name: parsed.name.clone(),
                 display_name: None,
                 manifest,
                 status: ArtifactStatus::Active,
@@ -378,20 +398,25 @@ pub async fn import_skill(
         }
     };
 
-    // Resolve or create version "0.1.0"
+    // Determine initial version: prefer frontmatter hint, default to "0.1.0"
+    let init_version = parsed.version.as_deref().unwrap_or("0.1.0").to_owned();
+    let semver =
+        semver::Version::parse(&init_version).unwrap_or_else(|_| semver::Version::new(0, 1, 0));
+
+    // Resolve or create version
     let version = match state.versions.find_latest(artifact.id).await? {
         Some(v) => v,
         None => {
             let v = ArtifactVersion {
                 id: Uuid::new_v4(),
                 artifact_id: artifact.id,
-                version: "0.1.0".into(),
-                major: 0,
-                minor: 1,
-                patch: 0,
+                version: semver.to_string(),
+                major: semver.major,
+                minor: semver.minor,
+                patch: semver.patch,
                 pre_release: None,
                 content: serde_json::json!({ "source_url": req.url }),
-                checksum: "".into(), // populated by content pipeline; not required for import
+                checksum: "".into(),
                 signature: None,
                 changelog: Some(format!("Imported from {}", req.url)),
                 bump_reason: "minor".into(),
@@ -429,6 +454,9 @@ pub async fn import_skill(
         "namespace": artifact.namespace,
         "name": artifact.name,
         "description": artifact.manifest.description,
+        "tags": artifact.manifest.tags,
+        "homepage": artifact.manifest.homepage,
+        "license": artifact.manifest.license,
         "version": version.version,
         "source_url": req.url,
     });
@@ -446,50 +474,6 @@ pub async fn import_skill(
             created,
         }),
     ))
-}
-
-// ── Private helpers ───────────────────────────────────────────────────────────
-
-/// Parse a `SKILL.md` file and extract `(name, description)` from YAML front-matter.
-///
-/// The front-matter format is:
-/// ```markdown
-/// ---
-/// name: my-skill-name
-/// description: A short description
-/// ---
-/// ```
-///
-/// Falls back to the last path segment if no front-matter is found.
-fn parse_skill_md(content: &str, skill_path: &str) -> (String, Option<String>) {
-    let mut name: Option<String> = None;
-    let mut description: Option<String> = None;
-
-    if content.starts_with("---") {
-        // Collect lines between the two `---` fences
-        let mut lines = content.lines().skip(1);
-        for line in lines.by_ref() {
-            if line.trim() == "---" {
-                break;
-            }
-            if let Some(val) = line.strip_prefix("name:") {
-                name = Some(val.trim().to_owned());
-            } else if let Some(val) = line.strip_prefix("description:") {
-                description = Some(val.trim().to_owned());
-            }
-        }
-    }
-
-    // Fallback: use the last path segment as the skill name
-    let resolved_name = name.unwrap_or_else(|| {
-        skill_path
-            .split('/')
-            .next_back()
-            .unwrap_or("unknown-skill")
-            .to_owned()
-    });
-
-    (resolved_name, description)
 }
 
 // ── Package management helpers ────────────────────────────────────────────────

@@ -25,6 +25,7 @@ pub mod backends;
 pub mod deploy;
 pub mod error;
 pub mod hooks;
+pub mod skill_md;
 
 pub use backends::{
     parse_github_tree_url, ClawhubBackend, GitHubBackend, GitHubRepoBackend, GitHubRepoInfo,
@@ -35,3 +36,4 @@ pub use deploy::{
 };
 pub use error::SkillError;
 pub use hooks::{HookRegistry, LoggingHook, MetadataHook, PublishHook};
+pub use skill_md::{parse_skill_md, ParsedSkillMd};
