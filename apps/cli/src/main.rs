@@ -71,6 +71,10 @@ enum Commands {
     Learn(commands::learn::LearnArgs),
     /// Submit benchmark results for an artifact (agent use)
     Benchmark(commands::benchmark::BenchmarkArgs),
+
+    // ── Self-management ────────────────────────────────────────────────────────
+    /// Update the agentverse CLI to the latest version
+    SelfUpdate(commands::self_update::SelfUpdateArgs),
 }
 
 #[tokio::main]
@@ -114,5 +118,7 @@ async fn main() -> anyhow::Result<()> {
         // Agent
         Commands::Learn(args) => commands::learn::run(args, &client).await,
         Commands::Benchmark(args) => commands::benchmark::run(args, &client).await,
+        // Self-management
+        Commands::SelfUpdate(args) => commands::self_update::run(args).await,
     }
 }
