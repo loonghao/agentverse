@@ -18,6 +18,10 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_HTTP_TIMEOUT: "600"
   CARGO_NET_RETRY: "10"
+  # Shared postgres credentials used by e2e job
+  POSTGRES_USER: agentverse
+  POSTGRES_PASSWORD: agentverse_test
+  POSTGRES_DB: agentverse_e2e
 
 jobs:
   quality:
@@ -167,3 +171,200 @@ jobs:
 
       - name: Build release binaries
         run: vx just build-release-target ${{ matrix.target }}
+
+      - name: Smoke test — server binary
+        shell: bash
+        run: |
+          BIN_EXT=""
+          [ "${{ runner.os }}" = "Windows" ] && BIN_EXT=".exe"
+          SERVER="target/${{ matrix.target }}/release/agentverse-server${BIN_EXT}"
+          CLI="target/${{ matrix.target }}/release/agentverse${BIN_EXT}"
+          echo "=== agentverse-server --version ==="
+          "$SERVER" --version
+          echo "=== agentverse --version ==="
+          "$CLI" --version
+
+  # ── Skill file validation ────────────────────────────────────────────────────
+  validate-skills:
+    name: Validate Skill Files
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate SKILL.md frontmatter
+        shell: bash
+        run: |
+          set -euo pipefail
+          REQUIRED_FIELDS=(name description version author license)
+          ERRORS=0
+
+          for skill_md in skills/*/SKILL.md; do
+            SKILL=$(dirname "$skill_md")
+            echo "── Checking $skill_md"
+
+            # Must start with YAML frontmatter delimiters
+            if ! head -1 "$skill_md" | grep -qE '^---'; then
+              echo "  ❌ Missing opening '---' frontmatter"
+              ERRORS=$((ERRORS + 1))
+              continue
+            fi
+
+            for field in "${REQUIRED_FIELDS[@]}"; do
+              if ! grep -qE "^${field}:" "$skill_md"; then
+                echo "  ❌ Missing required frontmatter field: ${field}"
+                ERRORS=$((ERRORS + 1))
+              fi
+            done
+
+            echo "  ✅ OK"
+          done
+
+          if [ "$ERRORS" -gt 0 ]; then
+            echo ""
+            echo "Skill validation failed with $ERRORS error(s)."
+            exit 1
+          fi
+          echo ""
+          echo "All skill files are valid."
+
+  # ── True E2E: real PostgreSQL + live server ──────────────────────────────────
+  e2e:
+    name: E2E (real server + PostgreSQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [test]
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: agentverse
+          POSTGRES_PASSWORD: agentverse_test
+          POSTGRES_DB: agentverse_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://agentverse:agentverse_test@localhost:5432/agentverse_e2e
+      JWT_SECRET: e2e-test-secret-do-not-use-in-production
+      PORT: "18080"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup vx
+        uses: loonghao/vx@main
+        with:
+          version: "0.8.0"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-key-prefix: vx-tools-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Setup tools (vx)
+        run: vx setup
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: e2e
+
+      - name: Build server (debug — faster)
+        run: vx cargo build -p agentverse-server
+
+      - name: Start server in background
+        run: |
+          ./target/debug/agentverse-server &
+          echo "SERVER_PID=$!" >> "$GITHUB_ENV"
+
+      - name: Wait for server to be ready
+        run: |
+          echo "Waiting for http://localhost:${PORT}/health..."
+          for i in $(seq 1 30); do
+            if curl -sf "http://localhost:${PORT}/health" > /dev/null; then
+              echo "Server is up after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+          curl -sf "http://localhost:${PORT}/health" || (echo "Server failed to start" && exit 1)
+
+      - name: E2E — health & readiness
+        run: |
+          STATUS=$(curl -sf "http://localhost:${PORT}/health" | jq -r '.status')
+          [ "$STATUS" = "ok" ] || (echo "❌ health status=$STATUS" && exit 1)
+          echo "✅ /health OK"
+
+          curl -sf "http://localhost:${PORT}/readiness" | jq .
+          echo "✅ /readiness OK"
+
+      - name: E2E — user registration & login
+        run: |
+          REGISTER=$(curl -sf -X POST "http://localhost:${PORT}/api/v1/auth/register" \
+            -H 'content-type: application/json' \
+            -d '{"username":"e2e_user","email":"e2e@agentverse.test","password":"E2ePass123!"}')
+          echo "$REGISTER" | jq .
+          TOKEN=$(echo "$REGISTER" | jq -r '.access_token')
+          [ "$TOKEN" != "null" ] && [ -n "$TOKEN" ] || (echo "❌ No token in register response" && exit 1)
+          echo "E2E_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+          echo "✅ register OK"
+
+      - name: E2E — create skill
+        run: |
+          SKILL=$(curl -sf -X POST "http://localhost:${PORT}/api/v1/skills" \
+            -H "authorization: Bearer ${E2E_TOKEN}" \
+            -H 'content-type: application/json' \
+            -d '{
+              "namespace": "e2eorg",
+              "name": "smoke-skill",
+              "display_name": "E2E Smoke Skill",
+              "manifest": {
+                "description": "Created by E2E test",
+                "input_modalities": ["text"],
+                "output_modalities": ["text"],
+                "protocols": ["mcp"],
+                "permissions": []
+              }
+            }')
+          echo "$SKILL" | jq .
+          SKILL_ID=$(echo "$SKILL" | jq -r '.id')
+          [ "$SKILL_ID" != "null" ] && [ -n "$SKILL_ID" ] || (echo "❌ No skill id" && exit 1)
+          echo "E2E_SKILL_ID=$SKILL_ID" >> "$GITHUB_ENV"
+          echo "✅ create skill OK: $SKILL_ID"
+
+      - name: E2E — list skills & trending
+        run: |
+          LIST=$(curl -sf "http://localhost:${PORT}/api/v1/skills")
+          TOTAL=$(echo "$LIST" | jq '.total // (.items | length)')
+          echo "Skills total: $TOTAL"
+          [ "$TOTAL" -ge 1 ] || (echo "❌ expected at least 1 skill" && exit 1)
+          echo "✅ list skills OK"
+
+          TRENDING=$(curl -sf "http://localhost:${PORT}/api/v1/trending?kind=skill")
+          echo "$TRENDING" | jq '.total'
+          echo "✅ trending OK"
+
+      - name: "E2E — social: like & comment"
+        run: |
+          # Like the skill
+          curl -sf -X POST \
+            "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/likes" \
+            -H "authorization: Bearer ${E2E_TOKEN}" \
+            -H 'content-type: application/json' -d '{}' | jq .
+          echo "✅ like OK"
+
+          # Add a comment
+          curl -sf -X POST \
+            "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/comments" \
+            -H "authorization: Bearer ${E2E_TOKEN}" \
+            -H 'content-type: application/json' \
+            -d '{"content":"E2E comment","kind":"review"}' | jq .
+          echo "✅ comment OK"
+
+      - name: Stop server
+        if: always()
+        run: kill "$SERVER_PID" 2>/dev/null || true

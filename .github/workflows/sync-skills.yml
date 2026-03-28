@@ -23,6 +23,16 @@ jobs:
         include:
           - skill: agentverse-openclaw
             slug: agentverse-cli
+            display_name: "AgentVerse CLI"
+          - skill: api-smoke-tester
+            slug: api-smoke-tester
+            display_name: "API Smoke Tester"
+          - skill: code-reviewer
+            slug: code-reviewer
+            display_name: "Code Reviewer"
+          - skill: release-notes-writer
+            slug: release-notes-writer
+            display_name: "Release Notes Writer"
 
     steps:
       - uses: actions/checkout@v4
@@ -75,7 +85,7 @@ jobs:
           echo "Publishing ${{ matrix.skill }} (slug: ${{ matrix.slug }}) v${{ steps.check.outputs.version }} to ClawHub..."
           npx clawhub@latest publish "${{ steps.check.outputs.skill_dir }}" \
             --slug "${{ matrix.slug }}" \
-            --name "AgentVerse CLI" \
+            --name "${{ matrix.display_name }}" \
             --version "${{ steps.check.outputs.version }}" \
             --tags "latest" \
             --changelog ""
