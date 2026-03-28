@@ -163,3 +163,96 @@ impl ObjectStore for CustomBackend {
         "custom"
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::object_store::config::{CustomConfig, DownloadAuth};
+
+    fn make_backend(download_auth: DownloadAuth) -> CustomBackend {
+        CustomBackend::new(CustomConfig {
+            upload_url: "https://upload.example.com".into(),
+            download_url_base: "https://cdn.example.com".into(),
+            upload_auth_header: None,
+            download_auth,
+        })
+    }
+
+    // ── public_url ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn public_url_no_auth_is_plain_url() {
+        let b = make_backend(DownloadAuth::None);
+        assert_eq!(
+            b.public_url("org/skill/0.1.0.zip"),
+            "https://cdn.example.com/org/skill/0.1.0.zip"
+        );
+    }
+
+    #[test]
+    fn public_url_strips_leading_slash_from_key() {
+        let b = make_backend(DownloadAuth::None);
+        // Leading slash must not produce a double-slash in the URL.
+        assert_eq!(
+            b.public_url("/org/skill/0.1.0.zip"),
+            "https://cdn.example.com/org/skill/0.1.0.zip"
+        );
+    }
+
+    #[test]
+    fn public_url_query_param_appends_token() {
+        let b = make_backend(DownloadAuth::QueryParam {
+            param: "token".into(),
+            token: "secret123".into(),
+        });
+        assert_eq!(
+            b.public_url("org/skill/0.1.0.zip"),
+            "https://cdn.example.com/org/skill/0.1.0.zip?token=secret123"
+        );
+    }
+
+    #[test]
+    fn public_url_bearer_header_is_plain_url() {
+        // BearerHeader strategy must NOT embed the token in the URL.
+        let b = make_backend(DownloadAuth::BearerHeader {
+            token: "my-bearer-token".into(),
+        });
+        assert_eq!(
+            b.public_url("org/skill/0.1.0.zip"),
+            "https://cdn.example.com/org/skill/0.1.0.zip"
+        );
+    }
+
+    // ── download_bearer_token ──────────────────────────────────────────────────
+
+    #[test]
+    fn download_bearer_token_returns_some_when_configured() {
+        let b = make_backend(DownloadAuth::BearerHeader {
+            token: "my-bearer-token".into(),
+        });
+        assert_eq!(b.download_bearer_token(), Some("my-bearer-token"));
+    }
+
+    #[test]
+    fn download_bearer_token_returns_none_for_no_auth() {
+        let b = make_backend(DownloadAuth::None);
+        assert_eq!(b.download_bearer_token(), None);
+    }
+
+    #[test]
+    fn download_bearer_token_returns_none_for_query_param() {
+        let b = make_backend(DownloadAuth::QueryParam {
+            param: "tok".into(),
+            token: "abc".into(),
+        });
+        assert_eq!(b.download_bearer_token(), None);
+    }
+
+    // ── misc ───────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn backend_name_is_custom() {
+        let b = make_backend(DownloadAuth::None);
+        assert_eq!(b.backend_name(), "custom");
+    }
+}

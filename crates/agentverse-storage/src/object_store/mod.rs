@@ -103,3 +103,125 @@ pub fn build_object_store(
     tracing::info!(backend = store.backend_name(), "object store initialised");
     Ok(store)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use config::{CustomConfig, DownloadAuth, LocalConfig, ObjectStoreBackend, ObjectStoreConfig};
+
+    // ── Factory ────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn build_local_backend_returns_local_backend() {
+        let cfg = ObjectStoreConfig {
+            backend: ObjectStoreBackend::Local(LocalConfig {
+                base_dir: std::env::temp_dir().join("agentverse-factory-test"),
+                serve_url: "http://localhost:8080/files".into(),
+            }),
+        };
+        let store = build_object_store(&cfg).expect("local backend should build");
+        assert_eq!(store.backend_name(), "local");
+    }
+
+    #[test]
+    fn build_custom_backend_returns_custom_backend() {
+        let cfg = ObjectStoreConfig {
+            backend: ObjectStoreBackend::Custom(CustomConfig {
+                upload_url: "https://upload.example.com".into(),
+                download_url_base: "https://cdn.example.com".into(),
+                upload_auth_header: None,
+                download_auth: DownloadAuth::None,
+            }),
+        };
+        let store = build_object_store(&cfg).expect("custom backend should build");
+        assert_eq!(store.backend_name(), "custom");
+    }
+
+    // ── Config deserialisation ─────────────────────────────────────────────────
+
+    #[test]
+    fn deserialize_local_backend_config() {
+        // The flattened serde shape: { "backend": "local", "base_dir": …, "serve_url": … }
+        let json = serde_json::json!({
+            "backend": "local",
+            "base_dir": "/tmp/agentverse-pkgs",
+            "serve_url": "http://localhost:8080/files"
+        });
+        let cfg: ObjectStoreConfig = serde_json::from_value(json).expect("must deserialise");
+        assert!(
+            matches!(cfg.backend, ObjectStoreBackend::Local(_)),
+            "expected Local variant"
+        );
+        if let ObjectStoreBackend::Local(local) = cfg.backend {
+            assert_eq!(local.serve_url, "http://localhost:8080/files");
+        }
+    }
+
+    #[test]
+    fn deserialize_custom_backend_config_with_bearer_auth() {
+        let json = serde_json::json!({
+            "backend": "custom",
+            "upload_url": "https://upload.example.com",
+            "download_url_base": "https://cdn.example.com",
+            "upload_auth_header": "Bearer svc-token",
+            "download_auth": { "type": "bearer_header", "token": "dl-token" }
+        });
+        let cfg: ObjectStoreConfig = serde_json::from_value(json).expect("must deserialise");
+        match cfg.backend {
+            ObjectStoreBackend::Custom(c) => {
+                assert_eq!(c.upload_url, "https://upload.example.com");
+                assert_eq!(c.upload_auth_header.as_deref(), Some("Bearer svc-token"));
+                assert!(
+                    matches!(c.download_auth, DownloadAuth::BearerHeader { .. }),
+                    "expected BearerHeader"
+                );
+            }
+            other => panic!("expected Custom, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn deserialize_custom_backend_config_with_query_param_auth() {
+        let json = serde_json::json!({
+            "backend": "custom",
+            "upload_url": "https://upload.example.com",
+            "download_url_base": "https://cdn.example.com",
+            "download_auth": {
+                "type": "query_param",
+                "param": "api_key",
+                "token": "abc123"
+            }
+        });
+        let cfg: ObjectStoreConfig = serde_json::from_value(json).expect("must deserialise");
+        match cfg.backend {
+            ObjectStoreBackend::Custom(c) => match c.download_auth {
+                DownloadAuth::QueryParam { param, token } => {
+                    assert_eq!(param, "api_key");
+                    assert_eq!(token, "abc123");
+                }
+                other => panic!("expected QueryParam, got {other:?}"),
+            },
+            other => panic!("expected Custom, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn deserialize_download_auth_none_is_default() {
+        // When `download_auth` is omitted, should default to None.
+        let json = serde_json::json!({
+            "backend": "custom",
+            "upload_url": "https://upload.example.com",
+            "download_url_base": "https://cdn.example.com"
+        });
+        let cfg: ObjectStoreConfig = serde_json::from_value(json).expect("must deserialise");
+        match cfg.backend {
+            ObjectStoreBackend::Custom(c) => {
+                assert!(
+                    matches!(c.download_auth, DownloadAuth::None),
+                    "default download_auth should be None"
+                );
+            }
+            other => panic!("expected Custom, got {other:?}"),
+        }
+    }
+}

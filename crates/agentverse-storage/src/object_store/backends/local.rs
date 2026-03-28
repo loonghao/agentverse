@@ -134,4 +134,60 @@ mod tests {
             "http://localhost:8080/files/ns/skill/1.0.0.zip"
         );
     }
+
+    #[tokio::test]
+    async fn put_creates_nested_directories() {
+        let backend = make_backend();
+        let data = Bytes::from_static(b"nested payload");
+        // Key with two levels of subdirectory — should succeed without pre-creating dirs.
+        backend
+            .put("org/my-skill/0.2.0.zip", data.clone(), "application/zip")
+            .await
+            .unwrap();
+        let got = backend.get("org/my-skill/0.2.0.zip").await.unwrap();
+        assert_eq!(got, data);
+    }
+
+    #[tokio::test]
+    async fn get_missing_key_returns_not_found() {
+        let backend = make_backend();
+        let err = backend.get("does-not-exist.zip").await.unwrap_err();
+        assert!(
+            matches!(err, ObjectStoreError::NotFound(_)),
+            "expected NotFound, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_missing_key_returns_not_found() {
+        let backend = make_backend();
+        let err = backend.delete("ghost.zip").await.unwrap_err();
+        assert!(
+            matches!(err, ObjectStoreError::NotFound(_)),
+            "expected NotFound, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn leading_slash_in_key_is_stripped() {
+        let backend = make_backend();
+        let data = Bytes::from_static(b"slash test");
+        // put with leading slash …
+        backend
+            .put("/slashed/key.zip", data.clone(), "application/zip")
+            .await
+            .unwrap();
+        // … must be readable without the slash …
+        let got = backend.get("slashed/key.zip").await.unwrap();
+        assert_eq!(got, data);
+        // … and the public_url must not double-slash either.
+        let url = backend.public_url("/slashed/key.zip");
+        assert_eq!(url, "http://localhost:8080/files/slashed/key.zip");
+    }
+
+    #[test]
+    fn backend_name_is_local() {
+        let backend = make_backend();
+        assert_eq!(backend.backend_name(), "local");
+    }
 }

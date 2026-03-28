@@ -15,7 +15,8 @@ mod common;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use common::build_test_app_with_state;
+use bytes::Bytes;
+use common::{build_test_app, build_test_app_with_state};
 use http_body_util::BodyExt;
 use tower::ServiceExt;
 
@@ -40,6 +41,48 @@ fn json_req(
         b = b.header("authorization", tok);
     }
     b.body(Body::from(body.to_string())).unwrap()
+}
+
+/// Build a minimal valid ZIP archive in memory containing one `SKILL.md` entry.
+fn make_zip_bytes() -> Bytes {
+    use std::io::{Cursor, Write as _};
+    let mut buf = Vec::new();
+    {
+        let cursor = Cursor::new(&mut buf);
+        let mut zip = zip::ZipWriter::new(cursor);
+        let opts = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored);
+        zip.start_file("SKILL.md", opts).unwrap();
+        zip.write_all(b"---\nname: test-upload\nversion: 0.1.0\n---\n# Test\n")
+            .unwrap();
+        zip.finish().unwrap();
+    }
+    Bytes::from(buf)
+}
+
+/// Build an HTTP multipart/form-data request carrying one `file` field.
+fn multipart_upload_req(uri: &str, zip_data: Bytes, token: Option<&str>) -> Request<Body> {
+    const BOUNDARY: &str = "----TestBoundary7890";
+    let mut body: Vec<u8> = Vec::new();
+    // -- file field --
+    body.extend_from_slice(format!("--{BOUNDARY}\r\n").as_bytes());
+    body.extend_from_slice(
+        b"Content-Disposition: form-data; name=\"file\"; filename=\"skill.zip\"\r\n",
+    );
+    body.extend_from_slice(b"Content-Type: application/zip\r\n\r\n");
+    body.extend_from_slice(&zip_data);
+    body.extend_from_slice(b"\r\n");
+    // -- end --
+    body.extend_from_slice(format!("--{BOUNDARY}--\r\n").as_bytes());
+
+    let mut b = Request::builder().method("POST").uri(uri).header(
+        "content-type",
+        format!("multipart/form-data; boundary={BOUNDARY}"),
+    );
+    if let Some(tok) = token {
+        b = b.header("authorization", tok);
+    }
+    b.body(Body::from(body)).unwrap()
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -865,4 +908,246 @@ mod parse_skill_md_tests {
         let p = parse_skill_md(OPENCLAW_SKILL, "fallback");
         assert_eq!(p.version.as_deref(), Some("0.1.4"));
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Upload endpoint: POST /api/v1/skills/:ns/:name/upload
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn upload_zip_returns_201_with_internal_source_type() {
+    let (app, _state) = build_test_app_with_state();
+    let (_uid, token) = register_and_login(&app).await;
+    create_skill(&app, &token, "upload-skill").await;
+
+    let resp = app
+        .oneshot(multipart_upload_req(
+            "/api/v1/skills/testorg/upload-skill/upload",
+            make_zip_bytes(),
+            Some(&token),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let json = body_json(resp).await;
+    assert_eq!(json["package"]["source_type"], "internal");
+    assert!(
+        json["download_url"].as_str().is_some(),
+        "response must include download_url"
+    );
+    assert!(
+        !json["download_url"].as_str().unwrap().is_empty(),
+        "download_url must not be empty"
+    );
+}
+
+#[tokio::test]
+async fn upload_zip_persists_package_to_repo() {
+    use agentverse_core::skill::SourceType;
+
+    let (app, state) = build_test_app_with_state();
+    let (_uid, token) = register_and_login(&app).await;
+    create_skill(&app, &token, "persist-skill").await;
+
+    let resp = app
+        .oneshot(multipart_upload_req(
+            "/api/v1/skills/testorg/persist-skill/upload",
+            make_zip_bytes(),
+            Some(&token),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    let json = body_json(resp).await;
+    let version_id: uuid::Uuid = json["package"]["artifact_version_id"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+
+    // The MetadataHook should have written the record to the in-memory repo.
+    let stored = state
+        .skill_packages
+        .find_by_version_and_source(version_id, &SourceType::Internal)
+        .await
+        .unwrap();
+    assert!(
+        stored.is_some(),
+        "package should be persisted via MetadataHook"
+    );
+    let stored = stored.unwrap();
+    assert!(
+        stored.checksum.is_some(),
+        "checksum (SHA-256) must be stored"
+    );
+    assert!(stored.file_size.unwrap() > 0, "file_size must be positive");
+}
+
+#[tokio::test]
+async fn upload_without_auth_returns_401() {
+    let (app, _state) = build_test_app_with_state();
+    let (_uid, token) = register_and_login(&app).await;
+    create_skill(&app, &token, "noauth-skill").await;
+
+    // Second request: no Authorization header.
+    let resp = app
+        .oneshot(multipart_upload_req(
+            "/api/v1/skills/testorg/noauth-skill/upload",
+            make_zip_bytes(),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn upload_to_nonexistent_skill_returns_404() {
+    let (app, _state) = build_test_app_with_state();
+    let (_uid, token) = register_and_login(&app).await;
+
+    let resp = app
+        .oneshot(multipart_upload_req(
+            "/api/v1/skills/ghost-org/ghost-skill/upload",
+            make_zip_bytes(),
+            Some(&token),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn upload_invalid_zip_bytes_returns_400() {
+    let (app, _state) = build_test_app_with_state();
+    let (_uid, token) = register_and_login(&app).await;
+    create_skill(&app, &token, "bad-zip-skill").await;
+
+    let resp = app
+        .oneshot(multipart_upload_req(
+            "/api/v1/skills/testorg/bad-zip-skill/upload",
+            Bytes::from_static(b"this is not a zip file"),
+            Some(&token),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let json = body_json(resp).await;
+    let msg = json["error"]["message"].as_str().unwrap_or("");
+    assert!(
+        msg.contains("invalid zip"),
+        "error message should mention 'invalid zip', got: {msg}"
+    );
+}
+
+#[tokio::test]
+async fn upload_by_non_owner_returns_403() {
+    let (app, _state) = build_test_app_with_state();
+
+    // First user creates the skill.
+    let (_uid, owner_token) = register_and_login(&app).await;
+    create_skill(&app, &owner_token, "owned-skill").await;
+
+    // Second user tries to upload.
+    let resp = app
+        .clone()
+        .oneshot(json_req(
+            "POST",
+            "/api/v1/auth/register",
+            serde_json::json!({
+                "username": "intruder",
+                "password": "password1234",
+                "email": "intruder@example.com"
+            }),
+            None,
+        ))
+        .await
+        .unwrap();
+    let json = body_json(resp).await;
+    let intruder_token = format!("Bearer {}", json["access_token"].as_str().unwrap());
+
+    let resp = app
+        .oneshot(multipart_upload_req(
+            "/api/v1/skills/testorg/owned-skill/upload",
+            make_zip_bytes(),
+            Some(&intruder_token),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Local file serving: GET /files/{key}
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn serve_local_file_returns_200_after_upload() {
+    let (app, _state) = build_test_app_with_state();
+    let (_uid, token) = register_and_login(&app).await;
+    create_skill(&app, &token, "serve-skill").await;
+
+    // Upload a zip so the local backend has a file on disk.
+    let upload_resp = app
+        .clone()
+        .oneshot(multipart_upload_req(
+            "/api/v1/skills/testorg/serve-skill/upload",
+            make_zip_bytes(),
+            Some(&token),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(upload_resp.status(), StatusCode::CREATED);
+
+    // Extract the relative path from the download_url.
+    // Local backend returns "http://localhost:8080/files/<key>".
+    let json = body_json(upload_resp).await;
+    let download_url = json["download_url"].as_str().unwrap();
+    let key = download_url
+        .split("/files/")
+        .nth(1)
+        .expect("download_url should contain /files/");
+
+    // Serve the file back via GET /files/{key}.
+    let serve_resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/files/{key}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(serve_resp.status(), StatusCode::OK);
+    let content_type = serve_resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    assert_eq!(content_type, "application/zip");
+
+    // The body should be a valid ZIP.
+    let body_bytes = serve_resp.into_body().collect().await.unwrap().to_bytes();
+    assert!(!body_bytes.is_empty());
+    zip::ZipArchive::new(std::io::Cursor::new(body_bytes))
+        .expect("served file must be a valid zip");
+}
+
+#[tokio::test]
+async fn serve_missing_file_returns_404() {
+    let app = build_test_app();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/files/does/not/exist.zip")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
