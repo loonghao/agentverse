@@ -7,6 +7,7 @@ pub use async_trait::async_trait as repo_async_trait;
 use crate::{
     artifact::{Artifact, ArtifactKind, ArtifactVersion},
     error::CoreError,
+    skill::{AgentKind, SkillInstall, SkillPackage},
     social::{AgentInteraction, Comment, Like, Rating},
     user::User,
 };
@@ -107,4 +108,46 @@ pub trait UserRepository: Send + Sync {
     async fn find_by_id(&self, id: Uuid) -> Result<Option<User>, CoreError>;
     async fn find_by_username(&self, username: &str) -> Result<Option<User>, CoreError>;
     async fn find_by_email(&self, email: &str) -> Result<Option<User>, CoreError>;
+}
+
+/// Port for skill package persistence.
+///
+/// A `SkillPackage` records where a specific artifact version can be downloaded
+/// from (Clawhub, GitHub, or custom URL) and stores the canonical download URL
+/// that was captured at publish time via the publishing hook.
+#[async_trait]
+pub trait SkillPackageRepository: Send + Sync {
+    /// Record a new skill package (called by the publishing hook).
+    async fn register(&self, pkg: SkillPackage) -> Result<SkillPackage, CoreError>;
+    /// Fetch a single package by its UUID.
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<SkillPackage>, CoreError>;
+    /// Find a package for a specific artifact version and source type.
+    async fn find_by_version_and_source(
+        &self,
+        version_id: Uuid,
+        source_type: &crate::skill::SourceType,
+    ) -> Result<Option<SkillPackage>, CoreError>;
+    /// List all packages for a given artifact version.
+    async fn list_for_version(&self, version_id: Uuid) -> Result<Vec<SkillPackage>, CoreError>;
+    /// List all packages for any version of an artifact.
+    async fn list_for_artifact(&self, artifact_id: Uuid) -> Result<Vec<SkillPackage>, CoreError>;
+    /// Remove a package record (does not affect installs already deployed).
+    async fn delete(&self, id: Uuid) -> Result<(), CoreError>;
+}
+
+/// Port for tracking skill installations on agent runtimes.
+#[async_trait]
+pub trait SkillInstallRepository: Send + Sync {
+    /// Record that a skill was deployed to an agent runtime.
+    async fn record(&self, install: SkillInstall) -> Result<SkillInstall, CoreError>;
+    /// Find existing install for a package + agent combination.
+    async fn find_by_package_and_agent(
+        &self,
+        package_id: Uuid,
+        agent: &AgentKind,
+    ) -> Result<Option<SkillInstall>, CoreError>;
+    /// List all installs for a skill package.
+    async fn list_for_package(&self, package_id: Uuid) -> Result<Vec<SkillInstall>, CoreError>;
+    /// List all installs for a specific agent kind across all skills.
+    async fn list_for_agent(&self, agent: &AgentKind) -> Result<Vec<SkillInstall>, CoreError>;
 }
