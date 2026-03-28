@@ -120,3 +120,112 @@ impl ObjectStore for S3Backend {
         "s3"
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::object_store::config::S3Config;
+
+    /// Build an S3Backend with the minimum required fields, overriding only
+    /// what each test needs.  We use fake-but-non-empty credentials so that
+    /// `AmazonS3Builder::build()` doesn't reject them outright.
+    fn make_backend(cfg: S3Config) -> S3Backend {
+        S3Backend::new(cfg).expect("S3Backend::new should succeed with valid config")
+    }
+
+    fn base_cfg() -> S3Config {
+        S3Config {
+            endpoint: None,
+            access_key: "AKIAIOSFODNN7EXAMPLE".into(),
+            secret_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".into(),
+            bucket: "my-bucket".into(),
+            region: "us-east-1".into(),
+            public_url_base: None,
+            force_path_style: false,
+            presigned_expiry_secs: 0,
+        }
+    }
+
+    // ── backend_name ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn backend_name_is_s3() {
+        let b = make_backend(base_cfg());
+        assert_eq!(b.backend_name(), "s3");
+    }
+
+    // ── public_url — default AWS virtual-hosted ────────────────────────────────
+
+    #[test]
+    fn public_url_aws_default_format() {
+        let b = make_backend(base_cfg());
+        let url = b.public_url("org/skill/1.0.0.zip");
+        assert_eq!(
+            url,
+            "https://my-bucket.s3.us-east-1.amazonaws.com/org/skill/1.0.0.zip"
+        );
+    }
+
+    #[test]
+    fn public_url_strips_leading_slash_from_key() {
+        let b = make_backend(base_cfg());
+        let with_slash = b.public_url("/ns/skill/0.1.0.zip");
+        let without_slash = b.public_url("ns/skill/0.1.0.zip");
+        assert_eq!(
+            with_slash, without_slash,
+            "leading slash should not affect URL"
+        );
+    }
+
+    // ── public_url — explicit CDN / public_url_base override ──────────────────
+
+    #[test]
+    fn public_url_uses_cdn_override_when_set() {
+        let b = make_backend(S3Config {
+            public_url_base: Some("https://cdn.example.com".into()),
+            ..base_cfg()
+        });
+        assert_eq!(
+            b.public_url("org/skill/1.0.0.zip"),
+            "https://cdn.example.com/org/skill/1.0.0.zip"
+        );
+    }
+
+    // ── public_url — path-style (MinIO / force_path_style) ────────────────────
+
+    #[test]
+    fn public_url_path_style_minio_endpoint() {
+        let b = make_backend(S3Config {
+            endpoint: Some("http://minio.local:9000".into()),
+            force_path_style: true,
+            ..base_cfg()
+        });
+        // Path-style: {endpoint}/{bucket}/{key}
+        let url = b.public_url("org/skill/1.0.0.zip");
+        assert!(
+            url.starts_with("http://minio.local:9000/my-bucket/"),
+            "path-style URL should start with endpoint/bucket, got: {url}"
+        );
+        assert!(
+            url.ends_with("org/skill/1.0.0.zip"),
+            "URL should end with key, got: {url}"
+        );
+    }
+
+    // ── public_url — virtual-hosted with custom endpoint (COS) ────────────────
+
+    #[test]
+    fn public_url_virtual_hosted_with_custom_endpoint() {
+        let b = make_backend(S3Config {
+            endpoint: Some("https://cos.ap-guangzhou.myqcloud.com".into()),
+            force_path_style: false,
+            ..base_cfg()
+        });
+        // Virtual-hosted: endpoint as-is (no bucket prefix in URL)
+        let url = b.public_url("org/skill/1.0.0.zip");
+        assert!(
+            url.starts_with("https://cos.ap-guangzhou.myqcloud.com/"),
+            "virtual-hosted URL should start with endpoint, got: {url}"
+        );
+    }
+}

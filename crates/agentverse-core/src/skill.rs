@@ -135,3 +135,133 @@ impl std::str::FromStr for AgentKind {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── SourceType Display ──────────────────────────────────────────────────────
+
+    #[test]
+    fn source_type_display_clawhub() {
+        assert_eq!(SourceType::Clawhub.to_string(), "clawhub");
+    }
+
+    #[test]
+    fn source_type_display_github() {
+        assert_eq!(SourceType::GitHub.to_string(), "github");
+    }
+
+    #[test]
+    fn source_type_display_github_repo() {
+        assert_eq!(SourceType::GitHubRepo.to_string(), "github_repo");
+    }
+
+    #[test]
+    fn source_type_display_url() {
+        assert_eq!(SourceType::Url.to_string(), "url");
+    }
+
+    #[test]
+    fn source_type_display_internal() {
+        assert_eq!(SourceType::Internal.to_string(), "internal");
+    }
+
+    // ── SourceType FromStr ──────────────────────────────────────────────────────
+
+    #[test]
+    fn source_type_from_str_all_variants() {
+        use std::str::FromStr;
+        assert_eq!(
+            SourceType::from_str("clawhub").unwrap(),
+            SourceType::Clawhub
+        );
+        assert_eq!(SourceType::from_str("github").unwrap(), SourceType::GitHub);
+        assert_eq!(
+            SourceType::from_str("github_repo").unwrap(),
+            SourceType::GitHubRepo
+        );
+        assert_eq!(SourceType::from_str("url").unwrap(), SourceType::Url);
+        assert_eq!(
+            SourceType::from_str("internal").unwrap(),
+            SourceType::Internal
+        );
+    }
+
+    #[test]
+    fn source_type_from_str_unknown_returns_error() {
+        use std::str::FromStr;
+        assert!(SourceType::from_str("unknown_backend").is_err());
+    }
+
+    // ── SourceType JSON serialization ──────────────────────────────────────────
+
+    #[test]
+    fn source_type_serde_round_trip() {
+        let variants = [
+            SourceType::Clawhub,
+            SourceType::GitHub,
+            SourceType::GitHubRepo,
+            SourceType::Url,
+            SourceType::Internal,
+        ];
+        for variant in &variants {
+            let json = serde_json::to_string(variant).unwrap();
+            let back: SourceType = serde_json::from_str(&json).unwrap();
+            assert_eq!(*variant, back, "round-trip failed for {variant}");
+        }
+    }
+
+    #[test]
+    fn source_type_github_repo_serializes_as_github_repo_not_git_hub_repo() {
+        let json = serde_json::to_string(&SourceType::GitHubRepo).unwrap();
+        assert_eq!(
+            json, r#""github_repo""#,
+            "GitHubRepo must serialize as 'github_repo'"
+        );
+    }
+
+    // ── AgentKind Display ──────────────────────────────────────────────────────
+
+    #[test]
+    fn agent_kind_display_known_variants() {
+        assert_eq!(AgentKind::OpenClaw.to_string(), "openclaw");
+        assert_eq!(AgentKind::CodeBuddy.to_string(), "codebuddy");
+        assert_eq!(AgentKind::WorkerBuddy.to_string(), "workerbuddy");
+        assert_eq!(AgentKind::Claude.to_string(), "claude");
+        assert_eq!(AgentKind::Augment.to_string(), "augment");
+    }
+
+    #[test]
+    fn agent_kind_display_custom() {
+        assert_eq!(AgentKind::Custom("my-agent".into()).to_string(), "my-agent");
+    }
+
+    // ── AgentKind FromStr ──────────────────────────────────────────────────────
+
+    #[test]
+    fn agent_kind_from_str_known_variants() {
+        use std::str::FromStr;
+        assert_eq!(
+            AgentKind::from_str("openclaw").unwrap(),
+            AgentKind::OpenClaw
+        );
+        assert_eq!(
+            AgentKind::from_str("codebuddy").unwrap(),
+            AgentKind::CodeBuddy
+        );
+        assert_eq!(
+            AgentKind::from_str("workerbuddy").unwrap(),
+            AgentKind::WorkerBuddy
+        );
+        assert_eq!(AgentKind::from_str("claude").unwrap(), AgentKind::Claude);
+        assert_eq!(AgentKind::from_str("augment").unwrap(), AgentKind::Augment);
+    }
+
+    #[test]
+    fn agent_kind_from_str_unknown_becomes_custom() {
+        use std::str::FromStr;
+        let ak = AgentKind::from_str("my-special-agent").unwrap();
+        assert_eq!(ak, AgentKind::Custom("my-special-agent".into()));
+    }
+}
