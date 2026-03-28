@@ -71,11 +71,23 @@ jobs:
       - name: Publish to ClawHub
         if: steps.token_check.outputs.has_token == 'true' && steps.check.outputs.skip == 'false'
         run: |
-          echo "Publishing ${SKILL} (slug: ${SLUG}) v${{ steps.check.outputs.version }} to ClawHub..."
-          npx clawhub@latest publish "${{ steps.check.outputs.skill_dir }}" \
+          VERSION="${{ steps.check.outputs.version }}"
+          echo "Publishing ${SKILL} (slug: ${SLUG}) v${VERSION} to ClawHub..."
+
+          output=$(npx clawhub@latest publish "${{ steps.check.outputs.skill_dir }}" \
             --slug "${SLUG}" \
             --name "${DISPLAY_NAME}" \
-            --version "${{ steps.check.outputs.version }}" \
+            --version "${VERSION}" \
             --tags "latest" \
-            --changelog ""
-          echo "✓ Published ${SLUG} v${{ steps.check.outputs.version }}"
+            --changelog "" 2>&1) && rc=0 || rc=$?
+
+          echo "$output"
+
+          if [ $rc -eq 0 ]; then
+            echo "✓ Published ${SLUG} v${VERSION}"
+          elif echo "$output" | grep -qi "version already exists"; then
+            echo "::notice::${SLUG} v${VERSION} already published — skipping"
+          else
+            echo "::error::Publish failed (exit $rc)"
+            exit $rc
+          fi
