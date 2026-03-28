@@ -64,7 +64,10 @@ pub struct CreateArtifactRequest {
     pub name: String,
     pub display_name: Option<String>,
     pub manifest: Manifest,
-    /// Initial content published as version 0.1.0
+    /// Initial content published as version 0.1.0.
+    /// Defaults to `null` when omitted — skills typically carry their contract
+    /// in the manifest rather than a separate content blob.
+    #[serde(default)]
     pub content: serde_json::Value,
 }
 
