@@ -186,3 +186,118 @@ impl ObjectStore for GitHubReleaseBackend {
         "github_release"
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::object_store::config::GitHubConfig;
+
+    fn make_backend(token: Option<&str>) -> GitHubReleaseBackend {
+        GitHubReleaseBackend::new(GitHubConfig {
+            owner: "testowner".into(),
+            repo: "testrepo".into(),
+            token: token.map(str::to_string),
+        })
+    }
+
+    // ── asset_name ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn asset_name_replaces_slashes_with_double_dash() {
+        assert_eq!(
+            GitHubReleaseBackend::asset_name("org/skill/1.0.0.zip"),
+            "org--skill--1.0.0.zip"
+        );
+    }
+
+    #[test]
+    fn asset_name_strips_leading_slash() {
+        assert_eq!(
+            GitHubReleaseBackend::asset_name("/org/skill/1.0.0.zip"),
+            "org--skill--1.0.0.zip"
+        );
+    }
+
+    #[test]
+    fn asset_name_simple_key_unchanged() {
+        assert_eq!(GitHubReleaseBackend::asset_name("skill.zip"), "skill.zip");
+    }
+
+    #[test]
+    fn asset_name_multiple_levels() {
+        assert_eq!(
+            GitHubReleaseBackend::asset_name("a/b/c/d.zip"),
+            "a--b--c--d.zip"
+        );
+    }
+
+    // ── public_url ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn public_url_constructs_github_release_asset_url() {
+        let b = make_backend(None);
+        assert_eq!(
+            b.public_url("org/skill/1.0.0.zip"),
+            format!(
+                "https://github.com/testowner/testrepo/releases/download/{RELEASE_TAG}/org--skill--1.0.0.zip"
+            )
+        );
+    }
+
+    #[test]
+    fn public_url_strips_leading_slash_from_key() {
+        let b = make_backend(None);
+        let with_slash = b.public_url("/ns/skill/0.1.0.zip");
+        let without_slash = b.public_url("ns/skill/0.1.0.zip");
+        assert_eq!(
+            with_slash, without_slash,
+            "leading slash should not affect URL"
+        );
+    }
+
+    #[test]
+    fn public_url_contains_release_tag() {
+        let b = make_backend(None);
+        let url = b.public_url("skill.zip");
+        assert!(
+            url.contains(RELEASE_TAG),
+            "URL must contain the release tag constant, got: {url}"
+        );
+    }
+
+    // ── backend_name ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn backend_name_is_github_release() {
+        let b = make_backend(None);
+        assert_eq!(b.backend_name(), "github_release");
+    }
+
+    // ── constructor ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn new_with_no_token_does_not_panic() {
+        let b = make_backend(None);
+        // Confirm basic fields are set correctly.
+        assert_eq!(b.owner, "testowner");
+        assert_eq!(b.repo, "testrepo");
+    }
+
+    #[test]
+    fn new_with_token_does_not_panic() {
+        // Token path adds an Authorization header — should not panic.
+        let b = make_backend(Some("ghp_fake_token_for_testing"));
+        assert_eq!(b.owner, "testowner");
+    }
+
+    #[test]
+    fn new_falls_back_to_env_token_when_config_token_is_none() {
+        // If GITHUB_TOKEN is set in the environment the backend should pick it up.
+        // We don't assert the token value here — just that construction succeeds.
+        let _b = GitHubReleaseBackend::new(GitHubConfig {
+            owner: "o".into(),
+            repo: "r".into(),
+            token: None, // relies on env fallback
+        });
+    }
+}

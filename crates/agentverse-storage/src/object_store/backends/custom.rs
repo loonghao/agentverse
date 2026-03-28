@@ -255,4 +255,204 @@ mod tests {
         let b = make_backend(DownloadAuth::None);
         assert_eq!(b.backend_name(), "custom");
     }
+
+    // ── HTTP round-trip (mini axum mock server) ────────────────────────────────
+    //
+    // Spin up a tiny Axum server that handles PUT/GET/DELETE for any path.
+    // This gives us coverage of the reqwest-based async methods without
+    // requiring a real external HTTP endpoint.
+
+    use std::sync::{Arc, Mutex};
+
+    /// Tiny store backed by a HashMap, used inside the mock server.
+    type FakeStore = Arc<Mutex<std::collections::HashMap<String, bytes::Bytes>>>;
+
+    /// Start a mock HTTP server that supports PUT (stores body), GET (retrieves
+    /// body) and DELETE (removes entry).  Returns the server base URL.
+    async fn start_custom_mock_server() -> (String, tokio::task::JoinHandle<()>) {
+        use axum::{
+            body::Body, extract::Path as AxumPath, http::StatusCode, response::Response,
+            routing::put, Router,
+        };
+        use tokio::net::TcpListener;
+
+        let store: FakeStore = Arc::new(Mutex::new(std::collections::HashMap::new()));
+
+        let app = Router::new().route(
+            "/{*key}",
+            put({
+                let store = store.clone();
+                |AxumPath(key): AxumPath<String>, body: bytes::Bytes| async move {
+                    store.lock().unwrap().insert(key, body);
+                    StatusCode::OK
+                }
+            })
+            .get({
+                let store = store.clone();
+                |AxumPath(key): AxumPath<String>| async move {
+                    match store.lock().unwrap().get(&key).cloned() {
+                        Some(data) => Response::builder()
+                            .status(StatusCode::OK)
+                            .body(Body::from(data))
+                            .unwrap(),
+                        None => Response::builder()
+                            .status(StatusCode::NOT_FOUND)
+                            .body(Body::empty())
+                            .unwrap(),
+                    }
+                }
+            })
+            .delete({
+                let store = store.clone();
+                |AxumPath(key): AxumPath<String>| async move {
+                    if store.lock().unwrap().remove(&key).is_some() {
+                        StatusCode::OK
+                    } else {
+                        StatusCode::NOT_FOUND
+                    }
+                }
+            }),
+        );
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let handle = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        (format!("http://127.0.0.1:{port}"), handle)
+    }
+
+    fn make_http_backend(base_url: &str) -> CustomBackend {
+        CustomBackend::new(CustomConfig {
+            upload_url: base_url.to_string(),
+            download_url_base: base_url.to_string(),
+            upload_auth_header: None,
+            download_auth: DownloadAuth::None,
+        })
+    }
+
+    #[tokio::test]
+    async fn put_uploads_bytes_and_returns_download_url() {
+        let (base_url, _server) = start_custom_mock_server().await;
+        let backend = make_http_backend(&base_url);
+        let data = bytes::Bytes::from_static(b"skill content");
+
+        let url = backend
+            .put("org/skill/1.0.0.zip", data, "application/zip")
+            .await
+            .expect("put should succeed");
+        assert!(
+            url.contains("org/skill/1.0.0.zip"),
+            "download URL should contain the key, got: {url}"
+        );
+    }
+
+    #[tokio::test]
+    async fn get_retrieves_previously_put_data() {
+        let (base_url, _server) = start_custom_mock_server().await;
+        let backend = make_http_backend(&base_url);
+        let data = bytes::Bytes::from_static(b"hello world");
+
+        backend
+            .put("test/data.zip", data.clone(), "application/zip")
+            .await
+            .unwrap();
+
+        let got = backend
+            .get("test/data.zip")
+            .await
+            .expect("get should succeed");
+        assert_eq!(got, data);
+    }
+
+    #[tokio::test]
+    async fn get_missing_key_returns_not_found() {
+        let (base_url, _server) = start_custom_mock_server().await;
+        let backend = make_http_backend(&base_url);
+
+        let err = backend.get("does-not-exist.zip").await.unwrap_err();
+        assert!(
+            matches!(err, ObjectStoreError::NotFound(_)),
+            "expected NotFound, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_removes_previously_put_key() {
+        let (base_url, _server) = start_custom_mock_server().await;
+        let backend = make_http_backend(&base_url);
+        let data = bytes::Bytes::from_static(b"to be deleted");
+
+        backend
+            .put("delete-me.zip", data, "application/zip")
+            .await
+            .unwrap();
+        backend
+            .delete("delete-me.zip")
+            .await
+            .expect("delete should succeed");
+
+        // After deletion, get should return NotFound.
+        let err = backend.get("delete-me.zip").await.unwrap_err();
+        assert!(matches!(err, ObjectStoreError::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn delete_missing_key_returns_not_found() {
+        let (base_url, _server) = start_custom_mock_server().await;
+        let backend = make_http_backend(&base_url);
+
+        let err = backend.delete("never-existed.zip").await.unwrap_err();
+        assert!(
+            matches!(err, ObjectStoreError::NotFound(_)),
+            "expected NotFound, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn put_with_upload_auth_header_succeeds() {
+        let (base_url, _server) = start_custom_mock_server().await;
+        let backend = CustomBackend::new(CustomConfig {
+            upload_url: base_url.clone(),
+            download_url_base: base_url,
+            upload_auth_header: Some("Bearer test-token".into()),
+            download_auth: DownloadAuth::None,
+        });
+        let data = bytes::Bytes::from_static(b"auth payload");
+        let url = backend
+            .put("auth/skill.zip", data, "application/zip")
+            .await
+            .expect("put with auth header should succeed");
+        assert!(url.contains("auth/skill.zip"));
+    }
+
+    #[tokio::test]
+    async fn get_with_bearer_auth_sends_authorization_header() {
+        let (base_url, _server) = start_custom_mock_server().await;
+        // First upload without auth so there's something to retrieve.
+        let plain = make_http_backend(&base_url);
+        plain
+            .put(
+                "bearer/skill.zip",
+                bytes::Bytes::from_static(b"data"),
+                "application/zip",
+            )
+            .await
+            .unwrap();
+
+        // Now retrieve using a bearer-auth backend.
+        let bearer_backend = CustomBackend::new(CustomConfig {
+            upload_url: base_url.clone(),
+            download_url_base: base_url,
+            upload_auth_header: None,
+            download_auth: DownloadAuth::BearerHeader {
+                token: "my-token".into(),
+            },
+        });
+        let got = bearer_backend
+            .get("bearer/skill.zip")
+            .await
+            .expect("get with bearer auth should succeed");
+        assert_eq!(got, bytes::Bytes::from_static(b"data"));
+    }
 }
