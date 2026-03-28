@@ -33,7 +33,7 @@ use agentverse_core::{
 };
 use agentverse_skills::{
     all_known_agents, parse_github_tree_url, parse_skill_md, GitHubRepoBackend, HookRegistry,
-    LoggingHook, MetadataHook,
+    LoggingHook,
 };
 
 use crate::{
@@ -170,11 +170,11 @@ pub async fn register_package(
         created_at: Utc::now(),
     };
 
-    // Fire publish hooks: MetadataHook persists to DB, LoggingHook traces.
+    // Persist the package to DB — errors must propagate (non-idempotent write).
+    state.skill_packages.register(pkg.clone()).await?;
+
+    // Side-effect hook for logging only (non-fatal).
     let mut registry = HookRegistry::new();
-    registry.register(std::sync::Arc::new(MetadataHook::new(
-        state.skill_packages.clone(),
-    )));
     registry.register(std::sync::Arc::new(LoggingHook));
     registry.run_all(&pkg).await;
 
@@ -456,10 +456,11 @@ pub async fn import_skill(
         created_at: Utc::now(),
     };
 
+    // Persist the package to DB — errors must propagate (non-idempotent write).
+    state.skill_packages.register(pkg.clone()).await?;
+
+    // Side-effect hook for logging only (non-fatal).
     let mut registry = HookRegistry::new();
-    registry.register(std::sync::Arc::new(MetadataHook::new(
-        state.skill_packages.clone(),
-    )));
     registry.register(std::sync::Arc::new(LoggingHook));
     registry.run_all(&pkg).await;
 
@@ -758,10 +759,11 @@ pub async fn upload_skill_package(
         created_at: Utc::now(),
     };
 
+    // Persist the package to DB — errors must propagate (non-idempotent write).
+    state.skill_packages.register(pkg.clone()).await?;
+
+    // Side-effect hook for logging only (non-fatal).
     let mut registry = HookRegistry::new();
-    registry.register(std::sync::Arc::new(MetadataHook::new(
-        state.skill_packages.clone(),
-    )));
     registry.register(std::sync::Arc::new(LoggingHook));
     registry.run_all(&pkg).await;
 
