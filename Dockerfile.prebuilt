@@ -1,0 +1,32 @@
+# ── Prebuilt runtime image ────────────────────────────────────────────────────
+# This Dockerfile is used by CI/CD (docker-publish.yml).
+# The server binary is compiled natively on the target platform BEFORE
+# the Docker build step, so this stage only copies artifacts and installs
+# a minimal set of runtime packages. No Rust toolchain required.
+#
+# For local development with in-Docker compilation, use the regular Dockerfile.
+FROM debian:bookworm-slim
+
+# ca-certificates: TLS connections to PostgreSQL / Redis / MinIO
+# curl: used by the HEALTHCHECK below
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Pre-built binary and runtime assets supplied via the Docker build context.
+# The CI workflow places these files in the staging directory before invoking
+# `docker build`.
+COPY agentverse-server /app/agentverse-server
+COPY config/           /app/config/
+COPY migrations/       /app/migrations/
+
+RUN chmod +x /app/agentverse-server
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=5 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+ENTRYPOINT ["/app/agentverse-server"]

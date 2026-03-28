@@ -2,6 +2,19 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+// ── Serde helpers ─────────────────────────────────────────────────────────────
+
+/// Deserialize a field that may be explicitly `null` in JSON, treating null
+/// as the type's `Default` value.  Without this helper, `#[serde(default)]`
+/// only applies when the key is *absent*, not when it is present but null.
+fn null_as_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Default + Deserialize<'de>,
+{
+    Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
+}
+
 /// The type of artifact stored in the registry.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -52,14 +65,19 @@ pub struct Capabilities {
 /// Inspired by Android permission model + MCP capability schema.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Manifest {
+    #[serde(default, deserialize_with = "null_as_default")]
     pub description: String,
+    #[serde(default, deserialize_with = "null_as_default")]
     pub capabilities: Capabilities,
     /// SBOM-style dependency declarations: "namespace/name" -> semver constraint
+    #[serde(default, deserialize_with = "null_as_default")]
     pub dependencies: std::collections::HashMap<String, String>,
+    #[serde(default, deserialize_with = "null_as_default")]
     pub tags: Vec<String>,
     pub homepage: Option<String>,
     pub license: Option<String>,
     /// Arbitrary extra metadata (framework-specific extensions)
+    #[serde(default, deserialize_with = "null_as_default")]
     pub extra: serde_json::Value,
 }
 
