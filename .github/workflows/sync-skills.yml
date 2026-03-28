@@ -1,9 +1,9 @@
-name: Sync Skills to ClawHub
+name: Publish Skills to ClawHub
 
 on:
   push:
     branches: [main]
-    paths: ["skills/**"]
+    paths: ["skills/**/SKILL.md"]
   release:
     types: [published]
   workflow_dispatch:
@@ -12,34 +12,49 @@ permissions:
   contents: read
 
 jobs:
-  sync-skills:
+  publish-skills:
+    name: Publish ${{ matrix.skill }} to ClawHub
     runs-on: ubuntu-latest
     if: github.repository == 'loonghao/agentverse'
+
+    # Discover every sub-directory under skills/ that contains a SKILL.md
+    strategy:
+      fail-fast: false
+      matrix:
+        skill:
+          - agentverse-openclaw
+
     steps:
-      - uses: actions/checkout@v6
-      - name: Package skills
-        run: |
-          cd skills && zip -r ../agentverse-skills.zip . && cd ..
-          echo "Packaged: $(ls -lh agentverse-skills.zip)"
-      - name: Upload skill artifact
-        uses: actions/upload-artifact@v6
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          name: agentverse-skills
-          path: agentverse-skills.zip
-          retention-days: 30
-      - name: Sync to ClawHub
+          node-version: "20"
+
+      - name: Verify skill directory
+        id: check
+        run: |
+          SKILL_DIR="skills/${{ matrix.skill }}"
+          if [ ! -f "$SKILL_DIR/SKILL.md" ]; then
+            echo "::warning::No SKILL.md found in $SKILL_DIR, skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "skill_dir=$SKILL_DIR" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to ClawHub
+        if: steps.check.outputs.skip == 'false'
         env:
           CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
         run: |
           if [ -z "$CLAWHUB_TOKEN" ]; then
-            echo "CLAWHUB_TOKEN not set, skipping sync"
+            echo "::warning::CLAWHUB_TOKEN secret not set — skipping publish"
+            echo "Add a CLAWHUB_TOKEN secret to enable automatic ClawHub publishing."
+            echo "Get your token at: https://clawhub.ai/settings/tokens"
             exit 0
           fi
-          curl -f -X POST \
-            -H "Authorization: Bearer $CLAWHUB_TOKEN" \
-            -H "Content-Type: multipart/form-data" \
-            -F "skill=@agentverse-skills.zip" \
-            -F "name=agentverse" \
-            -F "repository=loonghao/agentverse" \
-            "https://api.clawhub.ai/v1/skills/publish" \
-            && echo "Synced to ClawHub" || echo "ClawHub sync failed (non-fatal)"
+          echo "Publishing ${{ matrix.skill }} to ClawHub..."
+          npx --yes clawhub@latest publish "${{ steps.check.outputs.skill_dir }}"
+          echo "✓ Published ${{ matrix.skill }}"
