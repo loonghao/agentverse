@@ -1,0 +1,14 @@
+{
+  "name": "agentverse-docs",
+  "version": "1.0.0",
+  "description": "AgentVerse Documentation",
+  "type": "module",
+  "scripts": {
+    "dev": "vitepress dev",
+    "build": "vitepress build",
+    "preview": "vitepress preview"
+  },
+  "devDependencies": {
+    "vitepress": "^1.6.3"
+  }
+}
