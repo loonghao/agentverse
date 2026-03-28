@@ -127,8 +127,7 @@ pub async fn register_package(
         .await?
         .ok_or_else(|| ApiError::NotFound("no version found for skill".into()))?;
 
-    let source_type =
-        SourceType::from_str(&req.source_type).map_err(ApiError::BadRequest)?;
+    let source_type = SourceType::from_str(&req.source_type).map_err(ApiError::BadRequest)?;
 
     // For github_repo: if the caller provided a tree URL, auto-convert to
     // the archive download URL and fill in metadata.github_repo.

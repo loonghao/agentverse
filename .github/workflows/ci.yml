@@ -196,11 +196,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          REQUIRED_FIELDS=(name description version author license)
+          # Fields every skill format must have (agentverse + clawhub compatible)
+          REQUIRED_FIELDS=(name description version)
+          # Fields recommended for agentverse-native skills (warnings only)
+          RECOMMENDED_FIELDS=(author license)
           ERRORS=0
 
           for skill_md in skills/*/SKILL.md; do
-            SKILL=$(dirname "$skill_md")
             echo "── Checking $skill_md"
 
             # Must start with YAML frontmatter delimiters
@@ -212,8 +214,14 @@ jobs:
 
             for field in "${REQUIRED_FIELDS[@]}"; do
               if ! grep -qE "^${field}:" "$skill_md"; then
-                echo "  ❌ Missing required frontmatter field: ${field}"
+                echo "  ❌ Missing required field: ${field}"
                 ERRORS=$((ERRORS + 1))
+              fi
+            done
+
+            for field in "${RECOMMENDED_FIELDS[@]}"; do
+              if ! grep -qE "^${field}:" "$skill_md"; then
+                echo "  ⚠️  Missing recommended field: ${field}"
               fi
             done
 
