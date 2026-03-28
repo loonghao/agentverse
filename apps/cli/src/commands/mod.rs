@@ -8,6 +8,7 @@ pub mod login;
 pub mod publish;
 pub mod register;
 pub mod search;
+pub mod self_update;
 pub mod social;
 pub mod update;
 pub mod versions;
