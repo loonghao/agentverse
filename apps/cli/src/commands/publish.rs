@@ -79,11 +79,28 @@ pub async fn run(args: PublishArgs, client: &HubClient) -> Result<()> {
         serde_json::json!({})
     };
 
+    // Replace JSON `null` with appropriate empty defaults so the server can
+    // deserialize fields like `dependencies` (HashMap) without a 422 error.
+    let capabilities = if mf.capabilities.is_null() {
+        serde_json::json!({})
+    } else {
+        mf.capabilities
+    };
+    let dependencies = if mf.dependencies.is_null() {
+        serde_json::json!({})
+    } else {
+        mf.dependencies
+    };
+    let tags = match mf.metadata.get("tags") {
+        Some(t) if !t.is_null() => t.clone(),
+        _ => serde_json::json!([]),
+    };
+
     let manifest_json = serde_json::json!({
         "description": mf.package.description.unwrap_or_default(),
-        "capabilities": mf.capabilities,
-        "dependencies": mf.dependencies,
-        "tags": mf.metadata["tags"],
+        "capabilities": capabilities,
+        "dependencies": dependencies,
+        "tags": tags,
         "extra": {},
     });
 
