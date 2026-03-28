@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.6](https://github.com/loonghao/agentverse/compare/v0.1.5...v0.1.6) (2026-03-28)
+
+
+### Features
+
+* add pluggable object store backends ([36d1776](https://github.com/loonghao/agentverse/commit/36d1776ee13d883bc25cb7da2f2d6ee4aeb23270))
+
+
+### Bug Fixes
+
+* **ci:** skip publish when ClawHub version already exists ([03560b8](https://github.com/loonghao/agentverse/commit/03560b84e9680ef3341a34b24b8a02dd966f3ee6))
+* **ci:** update import tests to use main branch + make GitHub fetch mockable ([f01af91](https://github.com/loonghao/agentverse/commit/f01af913daa883846b14f79d996997e0911fb8c7))
+
+
+### Miscellaneous Chores
+
+* upgrade object_store 0.11 -&gt; 0.13.2, import ObjectStoreExt ([d7fac9a](https://github.com/loonghao/agentverse/commit/d7fac9a19d73c742d88d71e315aa31eb744cb1c5))
+
 ## [0.1.5](https://github.com/loonghao/agentverse/compare/v0.1.4...v0.1.5) (2026-03-28)
 
 
