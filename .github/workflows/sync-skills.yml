@@ -17,12 +17,12 @@ jobs:
     runs-on: ubuntu-latest
     if: github.repository == 'loonghao/agentverse'
 
-    # Discover every sub-directory under skills/ that contains a SKILL.md
     strategy:
       fail-fast: false
       matrix:
-        skill:
-          - agentverse-openclaw
+        include:
+          - skill: agentverse-openclaw
+            slug: agentverse-cli
 
     steps:
       - uses: actions/checkout@v4
@@ -32,8 +32,23 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Check CLAWHUB_TOKEN
+        id: token_check
+        env:
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+        run: |
+          if [ -z "$CLAWHUB_TOKEN" ]; then
+            echo "::warning::CLAWHUB_TOKEN secret not set — skipping publish"
+            echo "Add a CLAWHUB_TOKEN secret to enable automatic ClawHub publishing."
+            echo "Get your token at: https://clawhub.ai/settings/tokens"
+            echo "has_token=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_token=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Verify skill directory
         id: check
+        if: steps.token_check.outputs.has_token == 'true'
         run: |
           SKILL_DIR="skills/${{ matrix.skill }}"
           if [ ! -f "$SKILL_DIR/SKILL.md" ]; then
@@ -42,19 +57,26 @@ jobs:
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
             echo "skill_dir=$SKILL_DIR" >> "$GITHUB_OUTPUT"
+            # Extract version from SKILL.md frontmatter
+            VERSION=$(grep '^version:' "$SKILL_DIR/SKILL.md" | head -1 | sed 's/version: *//')
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Publish to ClawHub
-        if: steps.check.outputs.skip == 'false'
+      - name: Login to ClawHub
+        if: steps.token_check.outputs.has_token == 'true' && steps.check.outputs.skip == 'false'
         env:
           CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
         run: |
-          if [ -z "$CLAWHUB_TOKEN" ]; then
-            echo "::warning::CLAWHUB_TOKEN secret not set — skipping publish"
-            echo "Add a CLAWHUB_TOKEN secret to enable automatic ClawHub publishing."
-            echo "Get your token at: https://clawhub.ai/settings/tokens"
-            exit 0
-          fi
-          echo "Publishing ${{ matrix.skill }} to ClawHub..."
-          npx --yes clawhub@latest publish "${{ steps.check.outputs.skill_dir }}"
-          echo "✓ Published ${{ matrix.skill }}"
+          npx --yes clawhub@latest login --token "$CLAWHUB_TOKEN" --no-browser
+
+      - name: Publish to ClawHub
+        if: steps.token_check.outputs.has_token == 'true' && steps.check.outputs.skip == 'false'
+        run: |
+          echo "Publishing ${{ matrix.skill }} (slug: ${{ matrix.slug }}) v${{ steps.check.outputs.version }} to ClawHub..."
+          npx clawhub@latest publish "${{ steps.check.outputs.skill_dir }}" \
+            --slug "${{ matrix.slug }}" \
+            --name "AgentVerse CLI" \
+            --version "${{ steps.check.outputs.version }}" \
+            --tags "latest" \
+            --changelog ""
+          echo "✓ Published ${{ matrix.slug }} v${{ steps.check.outputs.version }}"

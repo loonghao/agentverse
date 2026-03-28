@@ -1,7 +1,7 @@
 ---
-name: agentverse
+name: agentverse-cli
 description: "Publish, discover, and manage AI skills, agents, workflows, souls and prompts from the AgentVerse marketplace. Use when working with the agentverse CLI to search/publish artifacts, authenticate, or manage AI agent ecosystem components."
-version: 0.1.3
+version: 0.1.4
 metadata:
   openclaw:
     homepage: https://github.com/loonghao/agentverse
@@ -10,9 +10,10 @@ metadata:
       bins:
         - agentverse
     install:
-      - kind: node
-        package: npx
-        bins: []
+      - kind: shell
+        linux: "curl -fsSL https://raw.githubusercontent.com/loonghao/agentverse/main/install.sh | bash"
+        macos: "curl -fsSL https://raw.githubusercontent.com/loonghao/agentverse/main/install.sh | bash"
+        windows: "irm https://raw.githubusercontent.com/loonghao/agentverse/main/install.ps1 | iex"
 ---
 
 # AgentVerse CLI
