@@ -12,9 +12,9 @@ use uuid::Uuid;
 /// The storage backend that hosts the skill package archive.
 ///
 /// Two GitHub modes exist:
-/// - `GitHub`     — release asset at `releases/download/{tag}/{asset}.zip`
+/// - `GitHub` — release asset at `releases/download/{tag}/{asset}.zip`
 /// - `GitHubRepo` — skill directory inside a repo (`tree/{ref}/{path}`),
-///                  as used by `anthropics/skills` and `vercel-labs/agent-skills`.
+///   as used by `anthropics/skills` and `vercel-labs/agent-skills`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SourceType {
@@ -125,4 +125,3 @@ impl std::str::FromStr for AgentKind {
         })
     }
 }
-

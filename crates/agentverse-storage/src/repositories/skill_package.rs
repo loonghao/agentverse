@@ -185,4 +185,3 @@ impl SkillInstallRepository for SkillInstallRepo {
             .map_err(|e| CoreError::Storage(StorageError(e.to_string())))
     }
 }
-

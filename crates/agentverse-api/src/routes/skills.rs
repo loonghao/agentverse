@@ -127,8 +127,8 @@ pub async fn register_package(
         .await?
         .ok_or_else(|| ApiError::NotFound("no version found for skill".into()))?;
 
-    let source_type = SourceType::from_str(&req.source_type)
-        .map_err(|e| ApiError::BadRequest(e))?;
+    let source_type =
+        SourceType::from_str(&req.source_type).map_err(ApiError::BadRequest)?;
 
     // For github_repo: if the caller provided a tree URL, auto-convert to
     // the archive download URL and fill in metadata.github_repo.
@@ -176,7 +176,10 @@ pub async fn register_package(
     registry.register(std::sync::Arc::new(LoggingHook));
     registry.run_all(&pkg).await;
 
-    Ok((StatusCode::CREATED, Json(serde_json::json!({ "package": pkg }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "package": pkg })),
+    ))
 }
 
 /// GET /api/v1/skills/:namespace/:name/packages
@@ -257,8 +260,7 @@ pub async fn install_skill(
 
     // Pick the package matching the requested source_type (or any)
     let pkg = if let Some(ref st) = req.source_type {
-        let target = SourceType::from_str(st)
-            .map_err(|e| ApiError::BadRequest(e))?;
+        let target = SourceType::from_str(st).map_err(ApiError::BadRequest)?;
         packages
             .into_iter()
             .find(|p| p.source_type == target)
@@ -284,18 +286,13 @@ pub async fn install_skill(
         SourceType::Url => std::sync::Arc::new(agentverse_skills::UrlBackend::new()),
     };
 
-    let installs =
-        agentverse_skills::deploy_skill(&pkg, &namespace, &name, &agents, backend)
-            .await
-            .map_err(|e| ApiError::Internal(anyhow::anyhow!("{e}")))?;
+    let installs = agentverse_skills::deploy_skill(&pkg, &namespace, &name, &agents, backend)
+        .await
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!("{e}")))?;
 
     // Persist install records
     for install in &installs {
-        state
-            .skill_installs
-            .record(install.clone())
-            .await
-            .ok(); // non-fatal — still return success
+        state.skill_installs.record(install.clone()).await.ok(); // non-fatal — still return success
     }
 
     Ok((
@@ -358,9 +355,11 @@ pub async fn import_skill(
     {
         Some(existing) => (existing, false),
         None => {
-            let mut manifest = Manifest::default();
-            manifest.description = description.clone().unwrap_or_default();
-            manifest.extra = info.to_metadata_json();
+            let manifest = Manifest {
+                description: description.clone().unwrap_or_default(),
+                extra: info.to_metadata_json(),
+                ..Default::default()
+            };
 
             let artifact = Artifact {
                 id: Uuid::new_v4(),
@@ -435,8 +434,19 @@ pub async fn import_skill(
         "source_url": req.url,
     });
 
-    let status = if created { StatusCode::CREATED } else { StatusCode::OK };
-    Ok((status, Json(ImportSkillResponse { skill: skill_json, package: pkg, created })))
+    let status = if created {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+    Ok((
+        status,
+        Json(ImportSkillResponse {
+            skill: skill_json,
+            package: pkg,
+            created,
+        }),
+    ))
 }
 
 // ── Private helpers ───────────────────────────────────────────────────────────
@@ -475,7 +485,7 @@ fn parse_skill_md(content: &str, skill_path: &str) -> (String, Option<String>) {
     let resolved_name = name.unwrap_or_else(|| {
         skill_path
             .split('/')
-            .last()
+            .next_back()
             .unwrap_or("unknown-skill")
             .to_owned()
     });
@@ -589,10 +599,7 @@ pub async fn list_installs(
         .ok_or_else(|| ApiError::NotFound(format!("skill/{namespace}/{name}")))?;
 
     // Gather all packages for the artifact, then collect their installs.
-    let packages = state
-        .skill_packages
-        .list_for_artifact(artifact.id)
-        .await?;
+    let packages = state.skill_packages.list_for_artifact(artifact.id).await?;
 
     let mut installs = Vec::new();
     for pkg in &packages {
@@ -632,4 +639,3 @@ pub async fn list_skills_for_agent(
         })),
     ))
 }
-

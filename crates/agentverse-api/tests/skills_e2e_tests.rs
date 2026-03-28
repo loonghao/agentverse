@@ -26,7 +26,12 @@ async fn body_json(resp: axum::response::Response) -> serde_json::Value {
     serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null)
 }
 
-fn json_req(method: &str, uri: &str, body: serde_json::Value, token: Option<&str>) -> Request<Body> {
+fn json_req(
+    method: &str,
+    uri: &str,
+    body: serde_json::Value,
+    token: Option<&str>,
+) -> Request<Body> {
     let mut b = Request::builder()
         .method(method)
         .uri(uri)
@@ -55,7 +60,11 @@ async fn register_and_login(app: &axum::Router) -> (uuid::Uuid, String) {
         ))
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::CREATED, "register should succeed");
+    assert_eq!(
+        resp.status(),
+        StatusCode::CREATED,
+        "register should succeed"
+    );
     let json = body_json(resp).await;
     let user_id: uuid::Uuid = json["user"]["id"].as_str().unwrap().parse().unwrap();
     let token = format!("Bearer {}", json["access_token"].as_str().unwrap());
@@ -356,7 +365,10 @@ async fn publish_hook_persists_package_metadata_to_repo() {
         .await
         .unwrap();
 
-    assert!(stored.is_some(), "MetadataHook should have persisted the package");
+    assert!(
+        stored.is_some(),
+        "MetadataHook should have persisted the package"
+    );
     let stored = stored.unwrap();
     assert_eq!(stored.id, pkg_id);
     assert_eq!(stored.download_url, download_url);
@@ -372,7 +384,7 @@ async fn agent_paths_cover_all_known_agents() {
     for agent in all_known_agents() {
         let root = agent_skills_root(&agent);
         assert!(
-            root.to_string_lossy().len() > 0,
+            !root.to_string_lossy().is_empty(),
             "agent path for {agent} should not be empty"
         );
         println!("{agent} → {}", root.display());
@@ -381,8 +393,8 @@ async fn agent_paths_cover_all_known_agents() {
 
 #[tokio::test]
 async fn skill_install_path_contains_namespace_and_name() {
-    use agentverse_skills::skill_install_path;
     use agentverse_core::skill::AgentKind;
+    use agentverse_skills::skill_install_path;
 
     let path = skill_install_path(&AgentKind::OpenClaw, "myorg", "my-tool");
     let s = path.to_string_lossy();
@@ -422,7 +434,10 @@ fn url_backend_returns_none_for_build_url() {
     use agentverse_skills::{backends::PackageBackend, UrlBackend};
     let backend = UrlBackend::new();
     let url = backend.build_download_url("myorg", "my-skill", "1.2.3");
-    assert_eq!(url, None, "UrlBackend cannot derive URL from namespace/name/version");
+    assert_eq!(
+        url, None,
+        "UrlBackend cannot derive URL from namespace/name/version"
+    );
 }
 
 // ── GitHubRepo URL parsing ────────────────────────────────────────────────────
@@ -461,10 +476,8 @@ fn parse_github_tree_url_vercel_example() {
 fn parse_github_tree_url_with_trailing_slash() {
     use agentverse_skills::parse_github_tree_url;
 
-    let info = parse_github_tree_url(
-        "https://github.com/org/repo/tree/develop/tools/my-tool/",
-    )
-    .expect("should parse trailing slash");
+    let info = parse_github_tree_url("https://github.com/org/repo/tree/develop/tools/my-tool/")
+        .expect("should parse trailing slash");
 
     assert_eq!(info.skill_path, "tools/my-tool");
 }
@@ -473,12 +486,10 @@ fn parse_github_tree_url_with_trailing_slash() {
 fn parse_github_tree_url_rejects_non_tree_url() {
     use agentverse_skills::parse_github_tree_url;
     // Release URL — not a tree URL
-    assert!(
-        parse_github_tree_url(
-            "https://github.com/org/repo/releases/download/v1.0.0/skill.zip"
-        )
-        .is_none()
-    );
+    assert!(parse_github_tree_url(
+        "https://github.com/org/repo/releases/download/v1.0.0/skill.zip"
+    )
+    .is_none());
     // Blob URL
     assert!(parse_github_tree_url("https://github.com/org/repo/blob/main/README.md").is_none());
     // Non-GitHub
@@ -666,18 +677,24 @@ fn extract_zip_subpath_extracts_correct_files() {
         let opts = zip::write::FileOptions::<()>::default();
 
         zip.add_directory("anthropics-skills-main/", opts).unwrap();
-        zip.add_directory("anthropics-skills-main/skills/", opts).unwrap();
-        zip.add_directory("anthropics-skills-main/skills/my-skill/", opts).unwrap();
+        zip.add_directory("anthropics-skills-main/skills/", opts)
+            .unwrap();
+        zip.add_directory("anthropics-skills-main/skills/my-skill/", opts)
+            .unwrap();
 
-        zip.start_file("anthropics-skills-main/skills/my-skill/SKILL.md", opts).unwrap();
+        zip.start_file("anthropics-skills-main/skills/my-skill/SKILL.md", opts)
+            .unwrap();
         zip.write_all(b"---\nname: my-skill\n---\n").unwrap();
 
-        zip.start_file("anthropics-skills-main/skills/my-skill/README.md", opts).unwrap();
+        zip.start_file("anthropics-skills-main/skills/my-skill/README.md", opts)
+            .unwrap();
         zip.write_all(b"# My Skill\n").unwrap();
 
         // This file should NOT appear in dest
-        zip.add_directory("anthropics-skills-main/skills/other-skill/", opts).unwrap();
-        zip.start_file("anthropics-skills-main/skills/other-skill/SKILL.md", opts).unwrap();
+        zip.add_directory("anthropics-skills-main/skills/other-skill/", opts)
+            .unwrap();
+        zip.start_file("anthropics-skills-main/skills/other-skill/SKILL.md", opts)
+            .unwrap();
         zip.write_all(b"other\n").unwrap();
 
         zip.finish().unwrap();
@@ -690,7 +707,13 @@ fn extract_zip_subpath_extracts_correct_files() {
     assert!(dest_dir.path().join("SKILL.md").exists());
     assert!(dest_dir.path().join("README.md").exists());
     assert!(
-        !dest_dir.path().join("SKILL.md").parent().unwrap().join("other-skill").exists(),
+        !dest_dir
+            .path()
+            .join("SKILL.md")
+            .parent()
+            .unwrap()
+            .join("other-skill")
+            .exists(),
         "other-skill directory should not be extracted"
     );
 }
@@ -711,6 +734,8 @@ fn extract_zip_subpath_errors_when_path_not_found() {
     }
 
     let result = extract_zip_subpath(tmp_zip.path(), "skills/nonexistent", dest_dir.path());
-    assert!(result.is_err(), "should error when skill_path not in archive");
+    assert!(
+        result.is_err(),
+        "should error when skill_path not in archive"
+    );
 }
-

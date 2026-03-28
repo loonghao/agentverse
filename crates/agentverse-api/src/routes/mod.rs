@@ -127,10 +127,7 @@ fn artifact_routes() -> Router<AppState> {
         )
         // Skill-specific: one-click GitHub import, package management, agent install.
         // Static sub-paths must be registered BEFORE the dynamic /{kind}/... routes.
-        .route(
-            "/api/v1/skills/import",
-            post(skills::import_skill),
-        )
+        .route("/api/v1/skills/import", post(skills::import_skill))
         // Skills installed for a specific agent runtime.
         // Must come before /{namespace}/{name} to prevent `agents` being parsed as namespace.
         .route(

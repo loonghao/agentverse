@@ -189,7 +189,10 @@ impl VersionRepository for InMemoryVersionRepo {
             .cloned())
     }
 
-    async fn list_for_artifact(&self, artifact_id: Uuid) -> Result<Vec<ArtifactVersion>, CoreError> {
+    async fn list_for_artifact(
+        &self,
+        artifact_id: Uuid,
+    ) -> Result<Vec<ArtifactVersion>, CoreError> {
         Ok(self
             .versions
             .lock()
@@ -206,18 +209,18 @@ impl VersionRepository for InMemoryVersionRepo {
 /// Replaces `NoopSocialRepo` to allow E2E tests to assert that social actions
 /// (likes, comments, ratings, interactions) are actually persisted and queryable.
 pub struct InMemorySocialRepo {
-    pub comments:     Mutex<HashMap<Uuid, Comment>>,
-    pub likes:        Mutex<HashMap<Uuid, Like>>,         // keyed by like.id
-    pub ratings:      Mutex<HashMap<Uuid, Rating>>,       // keyed by rating.id
+    pub comments: Mutex<HashMap<Uuid, Comment>>,
+    pub likes: Mutex<HashMap<Uuid, Like>>, // keyed by like.id
+    pub ratings: Mutex<HashMap<Uuid, Rating>>, // keyed by rating.id
     pub interactions: Mutex<HashMap<Uuid, AgentInteraction>>,
 }
 
 impl InMemorySocialRepo {
     pub fn new() -> Self {
         Self {
-            comments:     Mutex::new(HashMap::new()),
-            likes:        Mutex::new(HashMap::new()),
-            ratings:      Mutex::new(HashMap::new()),
+            comments: Mutex::new(HashMap::new()),
+            likes: Mutex::new(HashMap::new()),
+            ratings: Mutex::new(HashMap::new()),
             interactions: Mutex::new(HashMap::new()),
         }
     }
@@ -232,9 +235,13 @@ impl SocialRepository for InMemorySocialRepo {
 
     async fn list_comments(&self, artifact_id: Uuid) -> Result<Vec<Comment>, CoreError> {
         Ok(self
-            .comments.lock().unwrap().values()
+            .comments
+            .lock()
+            .unwrap()
+            .values()
             .filter(|c| c.artifact_id == artifact_id)
-            .cloned().collect())
+            .cloned()
+            .collect())
     }
 
     async fn update_comment(
@@ -245,7 +252,9 @@ impl SocialRepository for InMemorySocialRepo {
         content: String,
     ) -> Result<Comment, CoreError> {
         let mut guard = self.comments.lock().unwrap();
-        let c = guard.get_mut(&comment_id).ok_or_else(|| CoreError::NotFound("comment".into()))?;
+        let c = guard
+            .get_mut(&comment_id)
+            .ok_or_else(|| CoreError::NotFound("comment".into()))?;
         if c.artifact_id != artifact_id || c.author_id != author_id {
             return Err(CoreError::NotFound("comment".into()));
         }
@@ -270,16 +279,22 @@ impl SocialRepository for InMemorySocialRepo {
     }
 
     async fn remove_like(&self, artifact_id: Uuid, user_id: Uuid) -> Result<(), CoreError> {
-        self.likes.lock().unwrap()
+        self.likes
+            .lock()
+            .unwrap()
             .retain(|_, l| !(l.artifact_id == artifact_id && l.user_id == user_id));
         Ok(())
     }
 
     async fn list_likes(&self, artifact_id: Uuid) -> Result<Vec<Like>, CoreError> {
         Ok(self
-            .likes.lock().unwrap().values()
+            .likes
+            .lock()
+            .unwrap()
+            .values()
             .filter(|l| l.artifact_id == artifact_id)
-            .cloned().collect())
+            .cloned()
+            .collect())
     }
 
     async fn add_rating(&self, r: Rating) -> Result<Rating, CoreError> {
@@ -289,9 +304,13 @@ impl SocialRepository for InMemorySocialRepo {
 
     async fn list_ratings(&self, artifact_id: Uuid) -> Result<Vec<Rating>, CoreError> {
         Ok(self
-            .ratings.lock().unwrap().values()
+            .ratings
+            .lock()
+            .unwrap()
+            .values()
             .filter(|r| r.artifact_id == artifact_id)
-            .cloned().collect())
+            .cloned()
+            .collect())
     }
 
     async fn record_interaction(&self, i: AgentInteraction) -> Result<AgentInteraction, CoreError> {
@@ -299,15 +318,22 @@ impl SocialRepository for InMemorySocialRepo {
         Ok(i)
     }
 
-    async fn list_interactions(&self, artifact_id: Uuid) -> Result<Vec<AgentInteraction>, CoreError> {
+    async fn list_interactions(
+        &self,
+        artifact_id: Uuid,
+    ) -> Result<Vec<AgentInteraction>, CoreError> {
         Ok(self
-            .interactions.lock().unwrap().values()
+            .interactions
+            .lock()
+            .unwrap()
+            .values()
             .filter(|i| i.artifact_id == artifact_id)
-            .cloned().collect())
+            .cloned()
+            .collect())
     }
 
     async fn get_stats(&self, artifact_id: Uuid) -> Result<ArtifactStats, CoreError> {
-        let likes  = self.list_likes(artifact_id).await?.len() as i64;
+        let likes = self.list_likes(artifact_id).await?.len() as i64;
         let comments = self.list_comments(artifact_id).await?.len() as i64;
         let ratings_vec = self.list_ratings(artifact_id).await?;
         let ratings_count = ratings_vec.len() as i64;

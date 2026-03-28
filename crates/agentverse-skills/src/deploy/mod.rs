@@ -66,14 +66,13 @@ pub async fn deploy_skill(
     // For GitHub repo archives, read the skill subdirectory from metadata.
     // `metadata` is `serde_json::Value`; indexing a missing key returns `Value::Null`
     // and `.as_str()` on Null returns `None`, so this is always safe.
-    let github_repo_skill_path: Option<String> =
-        if pkg.source_type == SourceType::GitHubRepo {
-            pkg.metadata["github_repo"]["skill_path"]
-                .as_str()
-                .map(str::to_owned)
-        } else {
-            None
-        };
+    let github_repo_skill_path: Option<String> = if pkg.source_type == SourceType::GitHubRepo {
+        pkg.metadata["github_repo"]["skill_path"]
+            .as_str()
+            .map(str::to_owned)
+    } else {
+        None
+    };
 
     for agent in agents {
         let dest = skill_install_path(agent, namespace, name);
@@ -164,7 +163,11 @@ pub fn extract_zip_subpath(
         .find_map(|i| {
             zip.by_index(i).ok().and_then(|e| {
                 let n = e.name().to_owned();
-                if e.is_dir() { Some(n) } else { None }
+                if e.is_dir() {
+                    Some(n)
+                } else {
+                    None
+                }
             })
         })
         .unwrap_or_default();
@@ -224,4 +227,3 @@ fn sanitize_zip_path(base: &Path, entry_name: &str) -> Result<PathBuf, SkillErro
     }
     Ok(joined)
 }
-

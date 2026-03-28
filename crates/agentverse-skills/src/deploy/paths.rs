@@ -89,4 +89,3 @@ mod tests {
         assert!(!all_known_agents().is_empty());
     }
 }
-

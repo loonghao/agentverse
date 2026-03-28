@@ -31,4 +31,3 @@ pub enum SkillError {
     #[error("{0}")]
     Other(#[from] anyhow::Error),
 }
-

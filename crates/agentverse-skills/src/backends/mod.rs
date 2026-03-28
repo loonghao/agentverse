@@ -36,12 +36,7 @@ pub trait PackageBackend: Send + Sync {
     /// Build the canonical download URL for a skill package.
     ///
     /// Returns `None` when this backend cannot serve the requested combination.
-    fn build_download_url(
-        &self,
-        namespace: &str,
-        name: &str,
-        version: &str,
-    ) -> Option<String>;
+    fn build_download_url(&self, namespace: &str, name: &str, version: &str) -> Option<String>;
 
     /// Download the archive to `dest` and return the number of bytes written.
     ///
@@ -49,4 +44,3 @@ pub trait PackageBackend: Send + Sync {
     /// stored in the database from a prior publish).
     async fn download(&self, url: &str, dest: &Path) -> Result<u64, SkillError>;
 }
-
