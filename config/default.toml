@@ -16,12 +16,67 @@ pool_size = 10
 # Default cache TTL in seconds
 default_ttl_secs = 300
 
-[storage]
-endpoint = "http://localhost:9000"
-access_key = "minioadmin"
-secret_key = "minioadmin123"
-bucket = "agentverse"
-region = "us-east-1"
+# ── Object store ──────────────────────────────────────────────────────────────
+# Controls where uploaded skill-package zip archives are stored.
+# Set OBJECT_STORE_BACKEND env var at runtime to override.
+#
+# Supported backends:
+#   local   — local filesystem (default for dev / E2E tests, no extra services)
+#   s3      — AWS S3 / Tencent COS / MinIO / Cloudflare R2 (S3-protocol)
+#   github  — GitHub Releases (assets on a dedicated repo)
+#   custom  — organisation-owned HTTP endpoint
+#
+# For E2E tests, keep backend = "local"; no credentials needed.
+
+[object_store]
+backend = "local"
+
+[object_store.local]
+# Directory where uploaded packages are written to disk.
+base_dir = "/tmp/agentverse-packages"
+# HTTP URL prefix the server serves at GET /files/* (same host as the API).
+serve_url = "http://localhost:8080/files"
+
+# ── Uncomment and configure one of the following for production ───────────────
+
+# [object_store]
+# backend = "s3"
+#
+# [object_store.s3]
+# # Leave endpoint empty for AWS S3.
+# # For MinIO:       endpoint = "http://localhost:9000"
+# # For Tencent COS: endpoint = "https://cos.ap-guangzhou.myqcloud.com"
+# # For Cloudflare R2: endpoint = "https://<account_id>.r2.cloudflarestorage.com"
+# endpoint      = "http://localhost:9000"
+# access_key    = "minioadmin"
+# secret_key    = "minioadmin123"
+# bucket        = "agentverse"
+# region        = "us-east-1"          # COS: "ap-guangzhou"
+# force_path_style = true              # required for MinIO; false for AWS/COS
+# presigned_expiry_secs = 0            # 0 = public URL; 3600 = 1-hour signed URL
+# public_url_base = ""                 # CDN override, e.g. "https://cdn.example.com"
+
+# [object_store]
+# backend = "custom"
+#
+# [object_store.custom]
+# upload_url         = "https://upload.internal.example.com"
+# download_url_base  = "https://cdn.example.com"
+# upload_auth_header = "Bearer <service-token>"   # optional
+#
+# # Download auth: "none" | "query_param" | "bearer_header"
+# [object_store.custom.download_auth]
+# type  = "query_param"
+# param = "token"
+# token = "<download-token>"
+
+# [object_store]
+# backend = "github"
+#
+# [object_store.github]
+# owner = "myorg"
+# repo  = "agentverse-packages"
+# # token falls back to GITHUB_TOKEN env var
 
 [auth]
 jwt_secret = "change-me-in-production"
@@ -43,4 +98,3 @@ max_versions = 0
 anonymous_read = true
 # Require email verification before publishing
 require_verified_email = false
-

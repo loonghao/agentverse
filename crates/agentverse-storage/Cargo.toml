@@ -14,4 +14,11 @@ async-trait = { workspace = true }
 tracing = { workspace = true }
 sea-orm = { workspace = true }
 semver = { workspace = true }
+# Object store backends
+object_store = { workspace = true }
+bytes = { workspace = true }
+reqwest = { workspace = true }
+tokio = { workspace = true }
 
+[dev-dependencies]
+tempfile = { workspace = true }

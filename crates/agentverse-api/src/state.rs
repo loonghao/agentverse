@@ -7,6 +7,7 @@ use agentverse_core::repository::{
 };
 use agentverse_events::EventSink;
 use agentverse_search::{FullTextSearch, SemanticSearch};
+use agentverse_storage::ObjectStore;
 
 /// Shared application state injected into every Axum handler.
 #[derive(Clone)]
@@ -24,6 +25,11 @@ pub struct AppState {
     pub skill_packages: Arc<dyn SkillPackageRepository>,
     /// Records of where skills are installed per agent runtime.
     pub skill_installs: Arc<dyn SkillInstallRepository>,
+    /// Pluggable object store for internally-hosted skill package archives.
+    ///
+    /// `None` when no `[object_store]` section is present in the server
+    /// configuration.  Upload endpoints return 501 in that case.
+    pub object_store: Option<Arc<dyn ObjectStore>>,
 }
 
 #[derive(Debug, Clone)]

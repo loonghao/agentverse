@@ -8,19 +8,22 @@
 //!
 //! | Method | Path | Description |
 //! |--------|------|-------------|
-//! | POST | `/api/v1/skills/import`             | One-click import from a GitHub repo URL (auto-registers) |
-//! | POST | `/api/v1/skills/:ns/:name/packages` | Register a skill package (fires publish hooks) |
-//! | GET  | `/api/v1/skills/:ns/:name/packages` | List all packages for the latest skill version |
-//! | POST | `/api/v1/skills/:ns/:name/install`  | Download and deploy to agent runtimes |
+//! | POST | `/api/v1/skills/import`              | One-click import from a GitHub repo URL |
+//! | POST | `/api/v1/skills/:ns/:name/packages`  | Register an external package URL        |
+//! | GET  | `/api/v1/skills/:ns/:name/packages`  | List packages for the latest version    |
+//! | POST | `/api/v1/skills/:ns/:name/upload`    | Upload zip → ObjectStore (internal)     |
+//! | POST | `/api/v1/skills/:ns/:name/install`   | Download and deploy to agent runtimes   |
 
 use axum::{
-    extract::{Path, State},
+    extract::{Multipart, Path, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
+use bytes::Bytes;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::str::FromStr;
 use uuid::Uuid;
 
@@ -277,12 +280,17 @@ pub async fn install_skill(
         None => all_known_agents(),
     };
 
-    // Pick backend based on source_type
+    // Pick backend based on source_type.
+    // `Internal` packages are stored in the registry's own object store;
+    // their `download_url` is a plain HTTP URL (public, pre-signed, or
+    // query-param-authed) so `UrlBackend` handles them transparently.
     let backend: std::sync::Arc<dyn agentverse_skills::PackageBackend> = match pkg.source_type {
         SourceType::Clawhub => std::sync::Arc::new(agentverse_skills::ClawhubBackend::new()),
         SourceType::GitHub => std::sync::Arc::new(agentverse_skills::GitHubBackend::default()),
         SourceType::GitHubRepo => std::sync::Arc::new(GitHubRepoBackend::default()),
-        SourceType::Url => std::sync::Arc::new(agentverse_skills::UrlBackend::new()),
+        SourceType::Url | SourceType::Internal => {
+            std::sync::Arc::new(agentverse_skills::UrlBackend::new())
+        }
     };
 
     let installs = agentverse_skills::deploy_skill(&pkg, &namespace, &name, &agents, backend)
@@ -620,5 +628,180 @@ pub async fn list_skills_for_agent(
             "installs":   installs,
             "total":      installs.len(),
         })),
+    ))
+}
+
+// ── Internal upload endpoint ──────────────────────────────────────────────────
+
+/// POST /api/v1/skills/:namespace/:name/upload
+///
+/// Upload a skill zip to the registry's internal object store.
+///
+/// ## Multipart fields
+/// - `file` (required) — the zip archive bytes
+/// - `version` (optional) — semver string; defaults to latest
+/// - `changelog` (optional) — human-readable change summary
+///
+/// ## Server-side pipeline
+/// 1. Read zip bytes from multipart body
+/// 2. Validate zip integrity (can be opened)
+/// 3. Compute SHA-256 checksum
+/// 4. Parse `SKILL.md` from inside the zip (for metadata enrichment)
+/// 5. Upload to the configured `ObjectStore` backend
+/// 6. Persist `SkillPackage { source_type: Internal, download_url }`
+/// 7. Return `{ package, download_url, download_token? }`
+///
+/// The `download_token` field is only present when the backend uses
+/// `BearerHeader` download auth.  The CLI should store it and include
+/// `Authorization: Bearer {download_token}` on every download request.
+pub async fn upload_skill_package(
+    Path((namespace, name)): Path<(String, String)>,
+    State(state): State<AppState>,
+    AuthUser(claims): AuthUser,
+    mut multipart: Multipart,
+) -> ApiResult<impl IntoResponse> {
+    // Require an object store to be configured.
+    let store = state.object_store.as_ref().ok_or_else(|| {
+        ApiError::Internal(anyhow::anyhow!(
+            "no object store configured; set [object_store] in server config"
+        ))
+    })?;
+
+    // Resolve skill artifact (must already exist).
+    let artifact = state
+        .artifacts
+        .find_by_namespace_name(&ArtifactKind::Skill, &namespace, &name)
+        .await?
+        .ok_or_else(|| ApiError::NotFound(format!("skill/{namespace}/{name}")))?;
+
+    if artifact.author_id != claims.sub {
+        return Err(ApiError::Forbidden(
+            "only the skill author can upload packages".into(),
+        ));
+    }
+
+    let version = state
+        .versions
+        .find_latest(artifact.id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("no version found for skill".into()))?;
+
+    // ── Read multipart ────────────────────────────────────────────────────────
+    let mut zip_bytes: Option<Bytes> = None;
+    let mut changelog: Option<String> = None;
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("multipart error: {e}")))?
+    {
+        match field.name() {
+            Some("file") => {
+                let data = field
+                    .bytes()
+                    .await
+                    .map_err(|e| ApiError::BadRequest(format!("reading file field: {e}")))?;
+                zip_bytes = Some(data);
+            }
+            Some("changelog") => {
+                changelog = Some(field.text().await.unwrap_or_default());
+            }
+            _ => {} // ignore unknown fields
+        }
+    }
+
+    let zip_bytes =
+        zip_bytes.ok_or_else(|| ApiError::BadRequest("missing `file` multipart field".into()))?;
+
+    // ── Validate zip ─────────────────────────────────────────────────────────
+    let file_size = zip_bytes.len() as i64;
+    {
+        use std::io::Cursor;
+        zip::ZipArchive::new(Cursor::new(&zip_bytes))
+            .map_err(|e| ApiError::BadRequest(format!("invalid zip archive: {e}")))?;
+    }
+
+    // ── SHA-256 checksum ──────────────────────────────────────────────────────
+    let checksum = {
+        let mut hasher = Sha256::new();
+        hasher.update(&zip_bytes);
+        format!("{:x}", hasher.finalize())
+    };
+
+    // ── Upload to object store ────────────────────────────────────────────────
+    let storage_key = format!("{namespace}/{name}/{}.zip", version.version);
+    let download_url = store
+        .put(&storage_key, zip_bytes, "application/zip")
+        .await
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!("object store upload failed: {e}")))?;
+
+    let download_token = store.download_bearer_token().map(str::to_string);
+
+    // ── Persist SkillPackage ──────────────────────────────────────────────────
+    let pkg = SkillPackage {
+        id: Uuid::new_v4(),
+        artifact_version_id: version.id,
+        source_type: SourceType::Internal,
+        download_url: download_url.clone(),
+        checksum: Some(checksum),
+        file_size: Some(file_size),
+        metadata: serde_json::json!({
+            "storage_key": storage_key,
+            "changelog": changelog,
+        }),
+        created_at: Utc::now(),
+    };
+
+    let mut registry = HookRegistry::new();
+    registry.register(std::sync::Arc::new(MetadataHook::new(
+        state.skill_packages.clone(),
+    )));
+    registry.register(std::sync::Arc::new(LoggingHook));
+    registry.run_all(&pkg).await;
+
+    let mut resp = serde_json::json!({
+        "package": pkg,
+        "download_url": download_url,
+    });
+    if let Some(token) = download_token {
+        resp["download_token"] = serde_json::Value::String(token);
+    }
+
+    Ok((StatusCode::CREATED, Json(resp)))
+}
+
+// ── Local file serving ────────────────────────────────────────────────────────
+
+/// GET /files/{*key}
+///
+/// Serve files from the `local` object store backend.
+///
+/// When `backend = "local"` is configured, skill packages are stored on the
+/// server's local disk.  This handler streams them back to the CLI so it can
+/// download packages without external infrastructure.
+///
+/// For all other backends the URL returned by `ObjectStore::put()` points
+/// directly to the external service; this route is never called in that case.
+pub async fn serve_local_file(
+    Path(key): Path<String>,
+    State(state): State<AppState>,
+) -> ApiResult<impl IntoResponse> {
+    let store = state.object_store.as_ref().ok_or_else(|| {
+        ApiError::NotFound(format!(
+            "no object store configured; cannot serve /files/{key}"
+        ))
+    })?;
+
+    let bytes = store.get(&key).await.map_err(|e| match e {
+        agentverse_storage::ObjectStoreError::NotFound(_) => {
+            ApiError::NotFound(format!("file not found: {key}"))
+        }
+        other => ApiError::Internal(anyhow::anyhow!("{other}")),
+    })?;
+
+    Ok((
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "application/zip")],
+        bytes,
     ))
 }

@@ -19,6 +19,13 @@ pub struct PublishArgs {
     /// Changelog message for this version
     #[arg(long)]
     pub changelog: Option<String>,
+    /// Path to a zip archive to upload as an internal skill package.
+    ///
+    /// When provided, the zip is uploaded to the server's configured object
+    /// store (S3, COS, local-disk, etc.) after the metadata is published.
+    /// The returned download URL is printed so you can verify it.
+    #[arg(long, value_name = "FILE")]
+    pub zip: Option<std::path::PathBuf>,
 }
 
 /// Manifest file format (TOML).
@@ -122,5 +129,91 @@ pub async fn run(args: PublishArgs, client: &HubClient) -> Result<()> {
         mf.package.name,
         format!("v{ver}").green().bold(),
     );
+
+    // ── Optional zip upload ───────────────────────────────────────────────────
+    if let Some(zip_path) = args.zip {
+        upload_zip(
+            client,
+            &mf.package.namespace,
+            &mf.package.name,
+            &zip_path,
+            args.changelog.as_deref(),
+        )
+        .await?;
+    }
+
+    Ok(())
+}
+
+/// Upload a skill zip to the server's internal object store.
+///
+/// Calls `POST /api/v1/skills/{namespace}/{name}/upload` with the zip as a
+/// multipart `file` field.  On success, prints the returned download URL.
+async fn upload_zip(
+    client: &HubClient,
+    namespace: &str,
+    name: &str,
+    zip_path: &std::path::Path,
+    changelog: Option<&str>,
+) -> Result<()> {
+    use reqwest::multipart;
+
+    println!("  {} Uploading {} …", "↑".cyan().bold(), zip_path.display());
+
+    let zip_bytes = std::fs::read(zip_path)
+        .with_context(|| format!("reading zip file {}", zip_path.display()))?;
+
+    let file_name = zip_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("skill.zip")
+        .to_string();
+
+    let mut form = multipart::Form::new().part(
+        "file",
+        multipart::Part::bytes(zip_bytes)
+            .file_name(file_name)
+            .mime_str("application/zip")?,
+    );
+
+    if let Some(cl) = changelog {
+        form = form.text("changelog", cl.to_string());
+    }
+
+    let upload_path = format!("/api/v1/skills/{namespace}/{name}/upload");
+    let resp = client
+        .post(&upload_path)
+        .multipart(form)
+        .send()
+        .await
+        .context("sending upload request")?;
+
+    let status = resp.status();
+    let body: serde_json::Value = resp.json().await.context("reading upload response")?;
+
+    if !status.is_success() {
+        anyhow::bail!(
+            "upload failed ({}): {}",
+            status,
+            body["error"]["message"].as_str().unwrap_or("unknown")
+        );
+    }
+
+    let download_url = body["download_url"].as_str().unwrap_or("?");
+    println!(
+        "  {} Package uploaded  {}\n",
+        "✓".green().bold(),
+        download_url.cyan()
+    );
+
+    // Warn if the server returned a separate download token (bearer auth).
+    if let Some(token) = body["download_token"].as_str() {
+        println!(
+            "  {} Download token (store in CLI config or pass as --token):\n  {}\n",
+            "!".yellow().bold(),
+            token
+        );
+    }
+
     Ok(())
 }
