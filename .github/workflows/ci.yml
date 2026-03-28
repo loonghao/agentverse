@@ -286,20 +286,45 @@ jobs:
 
       - name: Start server in background
         run: |
-          ./target/debug/agentverse-server &
+          # Capture all stdout/stderr to a log file so we can diagnose startup failures.
+          # RUST_LOG=info ensures migration progress and errors are visible.
+          mkdir -p /tmp/agentverse
+          RUST_LOG=info,agentverse=debug \
+            nohup ./target/debug/agentverse-server \
+            > /tmp/agentverse/server.log 2>&1 &
           echo "SERVER_PID=$!" >> "$GITHUB_ENV"
+          echo "Server started with PID $!"
 
       - name: Wait for server to be ready
         run: |
-          echo "Waiting for http://localhost:${PORT}/health..."
-          for i in $(seq 1 30); do
-            if curl -sf "http://localhost:${PORT}/health" > /dev/null; then
-              echo "Server is up after ${i}s"
+          # Standard approach: poll /health with exponential-back-off,
+          # detect crashes via kill -0, and show server logs on any failure.
+          echo "Waiting for http://localhost:${PORT}/health (up to 90s)..."
+          DEADLINE=$(( $(date +%s) + 90 ))
+          while true; do
+            # Crash detection: if the process exited, bail immediately.
+            if ! kill -0 "${SERVER_PID}" 2>/dev/null; then
+              echo "❌ Server process (PID=${SERVER_PID}) exited unexpectedly"
+              echo "=== Server logs ==="
+              cat /tmp/agentverse/server.log || true
+              exit 1
+            fi
+
+            if curl -sf "http://localhost:${PORT}/health" > /dev/null 2>&1; then
+              echo "✅ Server is ready"
               break
             fi
-            sleep 1
+
+            if [ "$(date +%s)" -ge "$DEADLINE" ]; then
+              echo "❌ Server did not respond within 90 seconds"
+              echo "=== Server logs ==="
+              cat /tmp/agentverse/server.log || true
+              exit 1
+            fi
+
+            echo "  still waiting... ($(date -u +%T))"
+            sleep 3
           done
-          curl -sf "http://localhost:${PORT}/health" || (echo "Server failed to start" && exit 1)
 
       - name: E2E — health & readiness
         run: |
@@ -307,8 +332,9 @@ jobs:
           [ "$STATUS" = "ok" ] || (echo "❌ health status=$STATUS" && exit 1)
           echo "✅ /health OK"
 
-          curl -sf "http://localhost:${PORT}/readiness" | jq .
-          echo "✅ /readiness OK"
+          # Route is /ready (not /readiness)
+          curl -sf "http://localhost:${PORT}/ready" | jq .
+          echo "✅ /ready OK"
 
       - name: E2E — user registration & login
         run: |
@@ -373,6 +399,12 @@ jobs:
             -d '{"content":"E2E comment","kind":"review"}' | jq .
           echo "✅ comment OK"
 
+      - name: Dump server logs
+        if: always()
+        run: |
+          echo "=== Server logs (last 100 lines) ==="
+          tail -100 /tmp/agentverse/server.log 2>/dev/null || echo "(no log file)"
+
       - name: Stop server
         if: always()
-        run: kill "$SERVER_PID" 2>/dev/null || true
+        run: kill "${SERVER_PID}" 2>/dev/null || true
