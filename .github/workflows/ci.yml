@@ -245,7 +245,10 @@ jobs:
 
     services:
       postgres:
-        image: postgres:17
+        # Must use pgvector image — migrations require the "vector" extension
+        # (CREATE EXTENSION vector). The plain postgres:17 image does not
+        # ship pgvector and will fail on migration 1.
+        image: pgvector/pgvector:pg17
         env:
           POSTGRES_USER: agentverse
           POSTGRES_PASSWORD: agentverse_test
