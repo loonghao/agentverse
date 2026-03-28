@@ -757,25 +757,32 @@ mod parse_skill_md_tests {
         # Ripgrep Search";
 
     /// Advanced format: metadata.openclaw block, no top-level tags.
-    const OPENCLAW_SKILL: &str = "---\n\
-        name: agentverse-cli\n\
-        description: \"Manage AI skills from the command line.\"\n\
-        version: 0.1.4\n\
-        metadata:\n\
-          openclaw:\n\
-            homepage: https://github.com/loonghao/agentverse\n\
-            emoji: \"\\U0001F916\"\n\
-            requires:\n\
-              bins:\n\
-                - agentverse\n\
-              env:\n\
-                - AGENTVERSE_TOKEN\n\
-            install:\n\
-              - kind: shell\n\
-                linux: \"curl -fsSL https://example.com/install.sh | bash\"\n\
-                windows: \"irm https://example.com/install.ps1 | iex\"\n\
-        ---\n\
-        # AgentVerse CLI";
+    ///
+    /// NOTE: We use `concat!` here instead of `\n\` line-continuation because
+    /// line-continuation strips ALL leading whitespace from the next source
+    /// line, destroying the YAML indentation that encodes parent-child
+    /// relationships (e.g. `metadata.openclaw` would be flattened to two
+    /// sibling top-level keys).
+    const OPENCLAW_SKILL: &str = concat!(
+        "---\n",
+        "name: agentverse-cli\n",
+        "description: \"Manage AI skills from the command line.\"\n",
+        "version: 0.1.4\n",
+        "metadata:\n",
+        "  openclaw:\n",
+        "    homepage: https://github.com/loonghao/agentverse\n",
+        "    requires:\n",
+        "      bins:\n",
+        "        - agentverse\n",
+        "      env:\n",
+        "        - AGENTVERSE_TOKEN\n",
+        "    install:\n",
+        "      - kind: shell\n",
+        "        linux: \"curl -fsSL https://example.com/install.sh | bash\"\n",
+        "        windows: \"irm https://example.com/install.ps1 | iex\"\n",
+        "---\n",
+        "# AgentVerse CLI",
+    );
 
     /// Skill with multiline tag list (block sequence).
     const MULTILINE_TAGS_SKILL: &str = "---\n\
