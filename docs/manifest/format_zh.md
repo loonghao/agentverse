@@ -172,44 +172,71 @@ max_tokens  = 2048
 
 ---
 
-### `[workflow]` — 多步骤 DAG 流水线
+### `[workflow]` — Agent 逐步执行编排
+
+Workflow 定义了 **Agent 按步执行的编排逻辑约束**。它是一个声明式状态机：
+`entry` 是第一个步骤，`context` 是 Agent 读写的类型化共享状态，
+`transitions` 根据条件将 Agent 从一个步骤路由到下一个。
 
 当 `kind = "workflow"` 时添加 `[workflow]` 节：
 
 ```toml
 [workflow]
-trigger = "github_pr"    # github_pr | schedule | webhook | manual
+entry   = "triage"          # agent 执行的第一个步骤
 
+[workflow.context]
+pr_url = { type = "string",  required = true }
+depth  = { type = "string",  default = "shallow", enum = ["shallow", "deep"] }
+score  = { type = "integer", default = 0 }
+
+# decision 步骤 — agent 推理并写入 context
 [[workflow.steps]]
-id         = "code-review"
-name       = "AI 代码审查"
-kind       = "skill"
-namespace  = "agentverse-ci"
-artifact   = "code-reviewer"
-version    = ">=0.1.0"
-inputs     = { diff = "{{trigger.pr_url}}", rules = ["security", "correctness"] }
-on_error   = "fail"       # fail | warn | continue | retry
+id          = "triage"
+kind        = "decision"
+instruction = "若 PR 变更超过 500 行则将 depth 设为 'deep'，否则设为 'shallow'。"
+writes      = ["depth"]
 
+[[workflow.steps.transitions]]
+when = "context.depth == 'deep'"
+goto = "full-review"
+
+[[workflow.steps.transitions]]
+when = "context.depth == 'shallow'"
+goto = "quick-check"
+
+# skill 步骤 — 调用 AgentVerse skill
 [[workflow.steps]]
-id         = "release-notes"
-name       = "起草发布日志"
-kind       = "skill"
-namespace  = "agentverse-ci"
-artifact   = "release-notes-writer"
-version    = ">=0.1.0"
-depends_on = ["code-review"]
-inputs     = { repo = "{{trigger.repo}}", from_ref = "{{trigger.base_sha}}" }
-on_error   = "continue"
+id     = "full-review"
+kind   = "skill"
+use    = "agentverse-ci/code-reviewer@>=0.1.0"
+inputs = { diff = "{{context.pr_url}}", rules = ["security", "correctness"] }
+writes = ["score", "issues"]
 
-[workflow.outputs]
-review_summary = "{{steps.code-review.outputs.summary}}"
-release_draft  = "{{steps.release-notes.outputs.notes}}"
+[[workflow.steps.transitions]]
+when = "context.score >= 80"
+goto = "approve"
+
+[[workflow.steps.transitions]]
+goto = "request-changes"    # 兜底 — 无 `when` 始终匹配
 ```
 
-**DAG 执行：** 没有 `depends_on` 的步骤默认**并行**运行。
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `entry` | string | Agent 执行的第一个步骤 ID |
+| `context.*` | object | 类型化共享状态（`type`、`required`、`default`、`enum`） |
+| `steps[].id` | string | 唯一步骤标识符；由 `transitions.goto` 引用 |
+| `steps[].kind` | string | `decision`、`skill`、`agent`、`parallel`、`loop` |
+| `steps[].use` | string | `namespace/name@version`，`skill`/`agent` 类型必填 |
+| `steps[].writes` | string[] | 此步骤允许修改的 context 键 |
+| `steps[].instruction` | string | `decision` 步骤的自然语言指令 |
+| `transitions[].when` | string | 基于 `context.*` 的布尔表达式；省略则无条件跳转 |
+| `transitions[].goto` | string | 下一步骤 ID，或 `__end__` 终止工作流 |
 
-**标准兼容性：** 可导出为 GitHub Actions（`--format github-actions`）、
-Argo Workflows（`--format argo-workflow`）或 Prefect（`--format prefect`）。
+**执行模型：** Agent 每次执行一个步骤，完成后按序评估 transitions，
+第一个匹配的 `when` 获胜。`__end__` 终止工作流。
+
+**框架兼容性：** 映射到 LangGraph `StateGraph`、CrewAI Flows `@router`、
+OpenAI Swarm routines；也支持导出为 Prefect（`--format prefect`）。
 
 详细字段参考：[Workflow Manifest 文档](workflow_zh.md)
 

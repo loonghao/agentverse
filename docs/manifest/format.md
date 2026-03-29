@@ -182,55 +182,70 @@ Messages API roles. `input_variables` aligns with LangChain `PromptTemplate`.
 
 ---
 
-### `[workflow]` — Multi-Step DAG Pipelines
+### `[workflow]` — Agent Step-by-Step Orchestration
 
-Add a `[workflow]` section when `kind = "workflow"`:
+A workflow defines the **step-by-step orchestration logic that constrains how an Agent
+executes**. It is a declarative state machine: `entry` is the first step, `context` is the
+typed shared state the agent reads and writes, and `transitions` conditionally route the
+agent from one step to the next. Add a `[workflow]` section when `kind = "workflow"`:
 
 ```toml
 [workflow]
-trigger = "github_pr"    # github_pr | schedule | webhook | manual
+entry   = "triage"          # first step the agent executes
 
+[workflow.context]
+pr_url = { type = "string",  required = true }
+depth  = { type = "string",  default = "shallow", enum = ["shallow", "deep"] }
+score  = { type = "integer", default = 0 }
+
+# decision step — agent reasons and writes to context
 [[workflow.steps]]
-id         = "code-review"
-name       = "AI Code Review"
-kind       = "skill"
-namespace  = "agentverse-ci"
-artifact   = "code-reviewer"
-version    = ">=0.1.0"
-inputs     = { diff = "{{trigger.pr_url}}", rules = ["security", "correctness"] }
-on_error   = "fail"       # fail | warn | continue | retry
+id          = "triage"
+kind        = "decision"
+instruction = "If PR > 500 changed lines set depth='deep', else 'shallow'."
+writes      = ["depth"]
 
+[[workflow.steps.transitions]]
+when = "context.depth == 'deep'"
+goto = "full-review"
+
+[[workflow.steps.transitions]]
+when = "context.depth == 'shallow'"
+goto = "quick-check"
+
+# skill step — invoke an AgentVerse skill
 [[workflow.steps]]
-id         = "release-notes"
-name       = "Draft Release Notes"
-kind       = "skill"
-namespace  = "agentverse-ci"
-artifact   = "release-notes-writer"
-version    = ">=0.1.0"
-depends_on = ["code-review"]   # run after code-review step
-inputs     = { repo = "{{trigger.repo}}", from_ref = "{{trigger.base_sha}}" }
-on_error   = "continue"
+id     = "full-review"
+kind   = "skill"
+use    = "agentverse-ci/code-reviewer@>=0.1.0"
+inputs = { diff = "{{context.pr_url}}", rules = ["security", "correctness"] }
+writes = ["score", "issues"]
 
-[workflow.outputs]
-review_summary = "{{steps.code-review.outputs.summary}}"
-release_draft  = "{{steps.release-notes.outputs.notes}}"
+[[workflow.steps.transitions]]
+when = "context.score >= 80"
+goto = "approve"
+
+[[workflow.steps.transitions]]
+goto = "request-changes"    # fallback — no `when` always matches
 ```
 
-| Field              | Type     | Description                                             |
-|--------------------|----------|---------------------------------------------------------|
-| `trigger`          | string   | Activation event (`github_pr`, `schedule`, `webhook`)   |
-| `steps[].id`       | string   | Unique step identifier (used in `depends_on`)           |
-| `steps[].kind`     | string   | Step type: `skill`, `agent`, `shell`, `http`            |
-| `steps[].artifact` | string   | Artifact name within the given namespace                |
-| `steps[].depends_on`| string[] | IDs of steps that must complete first (empty = parallel)|
-| `steps[].on_error` | string   | Error strategy: `fail`, `warn`, `continue`, `retry`     |
-| `outputs`          | object   | Workflow-level output bindings using `{{step.outputs.*}}`|
+| Field | Type | Description |
+|-------|------|-------------|
+| `entry` | string | ID of the first step the agent executes |
+| `context.*` | object | Typed shared state schema (`type`, `required`, `default`, `enum`) |
+| `steps[].id` | string | Unique step identifier; referenced by `transitions.goto` |
+| `steps[].kind` | string | `decision`, `skill`, `agent`, `parallel`, `loop` |
+| `steps[].use` | string | `namespace/name@version` for `skill`/`agent` kinds |
+| `steps[].writes` | string[] | Context keys this step is allowed to modify |
+| `steps[].instruction` | string | Natural-language instruction for `decision` steps |
+| `transitions[].when` | string | Boolean expression on `context.*`; omit for unconditional |
+| `transitions[].goto` | string | Next step ID, or `__end__` to terminate |
 
-**DAG execution:** Steps without `depends_on` run in **parallel**. Steps list their
-prerequisites in `depends_on` to form the execution graph.
+**Execution model:** The agent executes one step at a time. After each step it evaluates
+transitions in order — the first matching `when` wins. `__end__` terminates the workflow.
 
-**Standards compatibility:** Export as GitHub Actions (`--format github-actions`),
-Argo Workflows (`--format argo-workflow`), or Prefect (`--format prefect`).
+**Framework compatibility:** Maps to LangGraph `StateGraph`, CrewAI Flows `@router`,
+and OpenAI Swarm routines. Export to Prefect (`--format prefect`) also supported.
 
 ---
 
