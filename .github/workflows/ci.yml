@@ -1149,6 +1149,140 @@ jobs:
           echo "  ✅ CLI login OK"
           echo "✅ CLI register & login OK"
 
+      # ═══════════════════════════════════════════════════════════════════════════
+      # CLI MEMORY & USAGE SYSTEM TESTS
+      # Exercises the full agent skill memory lifecycle:
+      #   install → memory status → memory use → memory stats → memory gc
+      # A temporary HOME is used so the memory.json is isolated from the runner.
+      # ═══════════════════════════════════════════════════════════════════════════
+
+      - name: "CLI — install skill for openclaw agent"
+        run: |
+          export HOME=/tmp/agentverse-cli-home
+          mkdir -p "$HOME"
+
+          # Install the smoke-skill published earlier as the openclaw agent runtime.
+          OUT=$(./target/debug/agentverse \
+            --server "http://localhost:${PORT}" \
+            --token "${E2E_TOKEN}" \
+            install skill/e2eorg/smoke-skill \
+            --agent-kind openclaw)
+          echo "$OUT"
+          echo "$OUT" | grep -qiE "installed|smoke-skill|✅" \
+            || (echo "❌ install output unexpected" && exit 1)
+          echo "✅ CLI install (openclaw) OK"
+
+          # Also install for augment to verify multi-agent independence
+          OUT=$(./target/debug/agentverse \
+            --server "http://localhost:${PORT}" \
+            --token "${E2E_TOKEN}" \
+            install skill/e2eorg/smoke-skill \
+            --agent-kind augment)
+          echo "$OUT"
+          echo "$OUT" | grep -qiE "installed|smoke-skill|✅" \
+            || (echo "❌ install (augment) output unexpected" && exit 1)
+          echo "✅ CLI install (augment) OK"
+
+      - name: "CLI — memory status shows openclaw and augment bindings"
+        run: |
+          export HOME=/tmp/agentverse-cli-home
+
+          OUT=$(./target/debug/agentverse memory status)
+          echo "$OUT"
+          # Must list both agent kinds
+          echo "$OUT" | grep -q "openclaw" \
+            || (echo "❌ memory status missing openclaw binding" && exit 1)
+          echo "$OUT" | grep -q "augment" \
+            || (echo "❌ memory status missing augment binding" && exit 1)
+          # Both should be hot (just installed)
+          echo "$OUT" | grep -qiE "hot" \
+            || (echo "❌ memory status doesn't show hot state" && exit 1)
+          echo "✅ CLI memory status OK"
+
+      - name: "CLI — memory use records usage for openclaw"
+        run: |
+          export HOME=/tmp/agentverse-cli-home
+
+          for i in 1 2 3; do
+            OUT=$(./target/debug/agentverse \
+              memory use skill/e2eorg/smoke-skill \
+              --agent-kind openclaw)
+            echo "$OUT"
+            echo "$OUT" | grep -qiE "recorded|use|🧠" \
+              || (echo "❌ memory use iteration $i failed: $OUT" && exit 1)
+          done
+          echo "✅ CLI memory use (×3) OK"
+
+      - name: "CLI — memory stats shows openclaw at top"
+        run: |
+          export HOME=/tmp/agentverse-cli-home
+
+          OUT=$(./target/debug/agentverse memory stats)
+          echo "$OUT"
+          # After 3 uses, openclaw should rank first
+          echo "$OUT" | grep -q "openclaw" \
+            || (echo "❌ memory stats missing openclaw entry" && exit 1)
+          echo "$OUT" | grep -qiE "leaderboard|#" \
+            || (echo "❌ memory stats output format unexpected: $OUT" && exit 1)
+          echo "✅ CLI memory stats OK"
+
+      - name: "CLI — memory archive (no cold skills yet, should report nothing to archive)"
+        run: |
+          export HOME=/tmp/agentverse-cli-home
+
+          OUT=$(./target/debug/agentverse memory archive)
+          echo "$OUT"
+          # Just-installed skills are hot — nothing to archive
+          echo "$OUT" | grep -qiE "nothing|no cold|archived 0|✅" \
+            || (echo "❌ archive output unexpected on hot skills: $OUT" && exit 1)
+          echo "✅ CLI memory archive (hot→no-op) OK"
+
+      - name: "CLI — memory restore on a hot skill (no-op, reports not found in archive)"
+        run: |
+          export HOME=/tmp/agentverse-cli-home
+
+          # Restoring a non-archived skill should report 'not found' gracefully
+          OUT=$(./target/debug/agentverse \
+            memory restore skill/e2eorg/nonexistent-skill \
+            --agent-kind openclaw)
+          echo "$OUT"
+          echo "$OUT" | grep -qiE "not found|❌" \
+            || (echo "❌ restore output unexpected for nonexistent skill: $OUT" && exit 1)
+          echo "✅ CLI memory restore (not-found) OK"
+
+      - name: "CLI — memory gc (nothing forgotten yet)"
+        run: |
+          export HOME=/tmp/agentverse-cli-home
+
+          OUT=$(./target/debug/agentverse memory gc)
+          echo "$OUT"
+          echo "$OUT" | grep -qiE "nothing|garbage|purged 0|✅" \
+            || (echo "❌ gc output unexpected: $OUT" && exit 1)
+          echo "✅ CLI memory gc OK"
+
+      - name: "CLI — install dry-run does not modify memory store"
+        run: |
+          export HOME=/tmp/agentverse-cli-home
+
+          # Count current bindings
+          BEFORE=$(./target/debug/agentverse memory stats | grep -c "skill" || true)
+
+          OUT=$(./target/debug/agentverse \
+            --server "http://localhost:${PORT}" \
+            --token "${E2E_TOKEN}" \
+            install skill/e2eorg/smoke-skill \
+            --agent-kind "dry-run-agent" \
+            --dry-run)
+          echo "$OUT"
+          echo "$OUT" | grep -qiE "dry.run" \
+            || (echo "❌ dry-run output missing 'dry-run' indication: $OUT" && exit 1)
+
+          # dry-run agent must NOT appear in memory status
+          STATUS=$(./target/debug/agentverse memory status)
+          echo "$STATUS" | grep -qv "dry-run-agent" \
+            || (echo "❌ dry-run agent appeared in memory store" && exit 1)
+          echo "✅ CLI install --dry-run OK"
+
       - name: Dump server logs
         if: always()
         run: |

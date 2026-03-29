@@ -1,0 +1,64 @@
+# docker-compose.openclaw-e2e.yml
+#
+# Openclaw agent E2E test environment.
+#
+# Brings up a full agentverse stack (postgres + redis + minio + server) and
+# an additional "openclaw-agent" service that mounts the CLI binary and runs
+# the E2E test script (scripts/openclaw_e2e.sh).
+#
+# Usage:
+#   # Build CLI first (native)
+#   cargo build --release -p agentverse
+#
+#   # Run full openclaw e2e suite
+#   docker compose -f docker-compose.yml -f docker-compose.openclaw-e2e.yml \
+#     run --rm openclaw-agent
+#
+# The openclaw-agent container exits 0 on success, non-zero on any failure.
+# All test output is printed to stdout so it is visible in CI logs.
+
+version: "3.9"
+
+services:
+  # ── Openclaw agent simulator ─────────────────────────────────────────────────
+  # Uses a plain Debian image — no Rust toolchain required.
+  # The pre-built CLI binary is bind-mounted from the host.
+  openclaw-agent:
+    image: debian:bookworm-slim
+    container_name: agentverse-openclaw-agent
+    depends_on:
+      server:
+        condition: service_healthy
+    environment:
+      # Point the CLI at the agentverse server running in the same network.
+      AGENTVERSE_URL: "http://server:8080"
+      # Agent identity used for all memory bindings in this test run.
+      AGENT_KIND: "openclaw"
+      # Credentials for the e2e test agent account (created by the script).
+      AGENT_USER: "openclaw-e2e-agent"
+      AGENT_PASS: "OpenclawPass1!"
+      AGENT_EMAIL: "openclaw-e2e@agentverse.test"
+      # Skill to install during the e2e run.
+      TEST_SKILL_NS: "openclaw-e2e"
+      TEST_SKILL_NAME: "code-helper"
+    volumes:
+      # Mount the pre-built CLI binary (host → container).
+      - ./target/release/agentverse:/usr/local/bin/agentverse:ro
+      # Mount the e2e test script.
+      - ./scripts/openclaw_e2e.sh:/openclaw_e2e.sh:ro
+      # Writable home for memory.json and config.toml.
+      - openclaw_agent_home:/root
+    entrypoint: ["/bin/bash", "/openclaw_e2e.sh"]
+    # Give the server plenty of time to be ready before giving up.
+    restart: "no"
+    networks:
+      - agentverse_default
+
+volumes:
+  openclaw_agent_home:
+
+networks:
+  agentverse_default:
+    # Attach to the default network created by docker-compose.yml.
+    external: true
+    name: skills-hub_default
