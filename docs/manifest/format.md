@@ -104,6 +104,38 @@ Alongside `agentverse.toml`, you can provide `content.json` with the actual arti
 
 The CLI automatically reads `content.json` from the same directory as the manifest.
 
+## OpenClaw Extension
+
+AgentVerse supports the **OpenClaw** metadata standard for richer skill descriptions. Include it under `[metadata.openclaw]`:
+
+```toml
+[metadata]
+tags     = ["python", "linting"]
+homepage = "https://github.com/myorg/code-linter"
+license  = "MIT"
+
+[metadata.openclaw]
+name        = "Python Code Linter"
+description = "A Python code linter with AST-based analysis"
+version     = "1.0.0"
+author      = "myorg"
+
+  [[metadata.openclaw.commands]]
+  name        = "lint"
+  description = "Lint Python source files"
+
+    [[metadata.openclaw.commands.arguments]]
+    name        = "files"
+    description = "List of Python files to lint"
+    required    = true
+
+  [[metadata.openclaw.commands]]
+  name        = "check"
+  description = "Check a single file and return diagnostics"
+```
+
+Skills published with OpenClaw metadata are automatically compatible with the [ClawHub](https://clawhub.dev) skill registry and AI agent tools that use the OpenClaw standard.
+
 ## Version Bumping
 
 The `--bump` flag or `default_bump` server config controls versioning:
@@ -115,4 +147,14 @@ The `--bump` flag or `default_bump` server config controls versioning:
 | `major` | `1.2.0` | `2.0.0` |
 
 The first publish always starts at `0.1.0`.
+
+## Validation Rules
+
+| Field | Constraint |
+|-------|-----------|
+| `kind` | Must be one of: `skill`, `agent`, `workflow`, `soul`, `prompt` |
+| `namespace` | Lowercase alphanumeric + hyphens; must match your username/org |
+| `name` | Lowercase alphanumeric + hyphens; unique within kind + namespace |
+| `protocols` | Supported: `mcp`, `openai-function`, `a2a`, `langchain` |
+| `permissions` | Supported: `network:read`, `network:write`, `fs:read`, `fs:write` |
 

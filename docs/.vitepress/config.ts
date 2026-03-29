@@ -24,9 +24,10 @@ export default defineConfig({
 
     nav: [
       { text: 'Guide', link: '/guide/introduction' },
-      { text: 'CLI Reference', link: '/cli/' },
+      { text: 'CLI', link: '/cli/' },
       { text: 'Server', link: '/server/' },
       { text: 'Storage', link: '/storage/' },
+      { text: 'Manifest', link: '/manifest/format' },
       {
         text: 'GitHub',
         link: 'https://github.com/loonghao/agentverse',

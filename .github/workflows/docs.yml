@@ -9,12 +9,12 @@ on:
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 
-# Allow only one concurrent deployment
+# Allow only one concurrent deployment; don't cancel in-progress deploys
 concurrency:
   group: pages
   cancel-in-progress: false
 
-# Grant GITHUB_TOKEN permissions to deploy to Pages
+# Grant GITHUB_TOKEN permissions required by actions/deploy-pages
 permissions:
   contents: read
   pages: write
@@ -46,6 +46,9 @@ jobs:
       - name: Build VitePress site
         working-directory: docs
         run: npm run build
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
 
       - name: Upload artifact for Pages
         uses: actions/upload-pages-artifact@v3

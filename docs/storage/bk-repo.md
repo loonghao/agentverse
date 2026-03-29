@@ -2,7 +2,7 @@
 
 [BK-Repo](https://github.com/TencentBlueKing/bk-repo) is the Tencent BlueKing artifact repository system — an open-source, self-hosted artifact registry that supports Maven, npm, Docker, Helm, PyPI, and **Generic** (arbitrary files) repositories.
 
-Use the `custom` storage backend to integrate AgentVerse with BK-Repo's Generic repository API.
+AgentVerse has **first-class native support** for BK-Repo via the `bkrepo` storage backend — the default backend since v0.1.7.
 
 ## How BK-Repo Generic Works
 
@@ -11,41 +11,46 @@ BK-Repo's Generic repository exposes a simple REST API:
 | Operation | Method | Path |
 |-----------|--------|------|
 | Upload | `PUT` | `/generic/{project}/{repo}/{path}` |
-| Download | `GET` | `/generic/{project}/{repo}/{path}` |
+| Download | `GET` | `/generic/{project}/{repo}/{path}?download=true` |
 | Delete | `DELETE` | `/generic/{project}/{repo}/{path}` |
 
-Authentication is via HTTP Basic Auth (`username:password`) or a platform access key.
+Authentication uses HTTP Basic Auth (`username:password`). Credentials can be set in config or via environment variables.
 
 ## Configuration
 
 ```toml
 [object_store]
-backend = "custom"
+backend = "bkrepo"
 
-[object_store.custom]
-# BK-Repo Generic API base URL for uploads
-# Format: https://<bkrepo-host>/generic/<project>/<repo>
-upload_url        = "https://bkrepo.example.com/generic/MY_PROJECT/agentverse-packages"
-
-# Public download base URL (same path, different auth strategy)
-download_url_base = "https://bkrepo.example.com/generic/MY_PROJECT/agentverse-packages"
-
-# HTTP Basic Auth for upload: "Basic base64(username:password)"
-# Generate with: echo -n "user:password" | base64
-upload_auth_header = "Basic dXNlcjpwYXNzd29yZA=="
-
-# Download auth: embed credentials in the download URL
-[object_store.custom.download_auth]
-type  = "query_param"
-param = "token"
-token = "YOUR_BKREPO_ACCESS_TOKEN"
+[object_store.bkrepo]
+# Base URL of your bk-repo server (no trailing slash)
+endpoint = "https://bkrepo.example.com"
+# bk-repo project name
+project  = "my-project"
+# Generic repository name within the project
+repo     = "agentverse-packages"
+# Credentials — prefer env vars BKREPO_USERNAME / BKREPO_PASSWORD in production
+username = "admin"
+password = "change-me-in-production"
+# Overwrite existing files on re-upload (default: true)
+overwrite = true
 ```
+
+### Environment Variable Overrides
+
+In production, set credentials via environment variables instead of the config file:
+
+| Variable | Description |
+|----------|-------------|
+| `BKREPO_USERNAME` | BK-Repo authentication username |
+| `BKREPO_PASSWORD` | BK-Repo authentication password |
+| `OBJECT_STORE_BACKEND` | Override backend at runtime (`bkrepo`) |
 
 ## Setup Steps
 
 ### 1. Deploy BK-Repo
 
-Follow the [BK-Repo deployment guide](https://github.com/TencentBlueKing/bk-repo). Or use the BK-Repo service within the BlueKing PaaS environment.
+Follow the [BK-Repo deployment guide](https://github.com/TencentBlueKing/bk-repo) or use the BK-Repo service within the BlueKing PaaS environment.
 
 ### 2. Create a Project and Generic Repo
 
@@ -56,14 +61,14 @@ Via the BK-Repo Web UI or API:
 curl -X POST "https://bkrepo.example.com/repository/api/project/create" \
   -H "Authorization: Basic $(echo -n 'admin:password' | base64)" \
   -H "Content-Type: application/json" \
-  -d '{"name": "MY_PROJECT", "displayName": "AgentVerse Packages", "description": "AI agent artifact storage"}'
+  -d '{"name": "my-project", "displayName": "AgentVerse Packages", "description": "AI agent artifact storage"}'
 
 # Create generic repository
 curl -X POST "https://bkrepo.example.com/repository/api/repo/create" \
   -H "Authorization: Basic $(echo -n 'admin:password' | base64)" \
   -H "Content-Type: application/json" \
   -d '{
-    "projectId": "MY_PROJECT",
+    "projectId": "my-project",
     "name": "agentverse-packages",
     "type": "GENERIC",
     "category": "LOCAL",
@@ -72,52 +77,81 @@ curl -X POST "https://bkrepo.example.com/repository/api/repo/create" \
   }'
 ```
 
-### 3. Create an Access Token (Recommended)
+### 3. Configure AgentVerse
 
-In BK-Repo, create a platform token or user token for service-to-service auth:
+Update `config/default.toml`:
 
-```bash
-curl -X POST "https://bkrepo.example.com/auth/api/user/token/create" \
-  -H "Authorization: Basic $(echo -n 'admin:password' | base64)" \
-  -H "Content-Type: application/json" \
-  -d '{"userId": "agentverse-service", "name": "agentverse-token", "expiredAt": null}'
+```toml
+[object_store]
+backend = "bkrepo"
+
+[object_store.bkrepo]
+endpoint = "https://bkrepo.example.com"
+project  = "my-project"
+repo     = "agentverse-packages"
+username = "agentverse-service"
+password = "SERVICE_PASSWORD"
+overwrite = true
 ```
 
-### 4. Test Upload
+Or export environment variables (recommended for production/Docker):
+
+```bash
+export BKREPO_USERNAME=agentverse-service
+export BKREPO_PASSWORD=SERVICE_PASSWORD
+```
+
+### 4. Verify Connectivity
 
 ```bash
 # Upload a test file
 curl -T ./test.zip \
-  "https://bkrepo.example.com/generic/MY_PROJECT/agentverse-packages/myorg/my-skill/1.0.0.zip" \
-  -H "Authorization: Basic $(echo -n 'agentverse-service:SERVICE_PASSWORD' | base64)"
+  "https://bkrepo.example.com/generic/my-project/agentverse-packages/test/1.0.0.zip" \
+  -H "Authorization: Basic $(echo -n 'agentverse-service:SERVICE_PASSWORD' | base64)" \
+  -H "X-BKREPO-OVERWRITE: true"
 
 # Download
-curl -O \
-  "https://bkrepo.example.com/generic/MY_PROJECT/agentverse-packages/myorg/my-skill/1.0.0.zip?token=ACCESS_TOKEN"
+curl -OL \
+  "https://bkrepo.example.com/generic/my-project/agentverse-packages/test/1.0.0.zip?download=true" \
+  -H "Authorization: Basic $(echo -n 'agentverse-service:SERVICE_PASSWORD' | base64)"
 ```
 
-## Public vs Private Repositories
+## Docker / Kubernetes
 
-| BK-Repo Repo Type | Recommended `download_auth` |
-|-------------------|-----------------------------|
-| `public: true` | `type = "none"` |
-| `public: false` | `type = "query_param"` with access token |
+Pass credentials as environment variables — never bake secrets into the image:
+
+```yaml
+# docker-compose.yml
+environment:
+  - BKREPO_USERNAME=agentverse-service
+  - BKREPO_PASSWORD=${BKREPO_PASSWORD}
+```
+
+```yaml
+# Kubernetes Secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: bkrepo-credentials
+stringData:
+  BKREPO_USERNAME: agentverse-service
+  BKREPO_PASSWORD: "your-secure-password"
+```
 
 ## Full Production Example
 
 ```toml
 [object_store]
-backend = "custom"
+backend = "bkrepo"
 
-[object_store.custom]
-upload_url        = "https://bkrepo.corp.example.com/generic/ai-platform/agentverse-pkgs"
-download_url_base = "https://bkrepo.corp.example.com/generic/ai-platform/agentverse-pkgs"
-upload_auth_header = "Basic YWdlbnR2ZXJzZS1zdmM6U0VDUkVUX1BBU1NXT1JE"
-
-[object_store.custom.download_auth]
-type  = "query_param"
-param = "token"
-token = "bk-repo-access-token-xxxxxxxxxxxx"
+[object_store.bkrepo]
+endpoint  = "https://bkrepo.corp.example.com"
+project   = "ai-platform"
+repo      = "agentverse-pkgs"
+# Set via BKREPO_USERNAME / BKREPO_PASSWORD env vars in production
+username  = ""
+password  = ""
+overwrite = true
 ```
 
 ## References
