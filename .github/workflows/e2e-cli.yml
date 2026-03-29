@@ -1,0 +1,239 @@
+name: E2E — CLI Integration Tests
+
+# Triggered by ci.yml via workflow_call, or manually for debugging.
+on:
+  workflow_call: {}
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_HTTP_TIMEOUT: "600"
+  CARGO_NET_RETRY: "10"
+
+jobs:
+  e2e-cli:
+    name: E2E CLI Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: agentverse
+          POSTGRES_PASSWORD: agentverse_test
+          POSTGRES_DB: agentverse_cli_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://agentverse:agentverse_test@localhost:5432/agentverse_cli_e2e
+      JWT_SECRET: e2e-cli-test-secret-do-not-use-in-production
+      PORT: "18082"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup vx
+        uses: loonghao/vx@main
+        with:
+          version: "0.8.0"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-key-prefix: vx-tools-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Setup tools (vx)
+        run: vx setup
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: e2e-cli
+
+      - name: Build server and CLI (debug)
+        run: vx cargo build -p agentverse-server -p agentverse
+
+      - name: Start server in background
+        run: |
+          mkdir -p /tmp/agentverse-cli
+          RUST_LOG=info,agentverse=debug \
+            nohup ./target/debug/agentverse-server \
+            > /tmp/agentverse-cli/server.log 2>&1 &
+          echo "SERVER_PID=$!" >> "$GITHUB_ENV"
+
+      - name: Wait for server to be ready
+        run: |
+          DEADLINE=$(( $(date +%s) + 90 ))
+          while true; do
+            if ! kill -0 "${SERVER_PID}" 2>/dev/null; then
+              echo "❌ Server crashed"; cat /tmp/agentverse-cli/server.log; exit 1
+            fi
+            curl -sf "http://localhost:${PORT}/health" > /dev/null 2>&1 && echo "✅ Server ready" && break
+            [ "$(date +%s)" -ge "$DEADLINE" ] && { cat /tmp/agentverse-cli/server.log; exit 1; }
+            sleep 3
+          done
+
+      # ══════════════════════════════════════════════════════════════════════════
+      # SETUP: create test user and skill for CLI to interact with
+      # ══════════════════════════════════════════════════════════════════════════
+      - name: "Setup — register user and create test skill"
+        run: |
+          TOKEN=$(curl -sf -X POST "http://localhost:${PORT}/api/v1/auth/register" \
+            -H 'content-type: application/json' \
+            -d '{"username":"e2e_user","email":"e2e@agentverse.test","password":"E2ePass123!"}' \
+            | jq -r '.access_token')
+          echo "E2E_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+
+          curl -sf -X POST "http://localhost:${PORT}/api/v1/skills" \
+            -H "authorization: Bearer ${TOKEN}" -H 'content-type: application/json' \
+            -d '{
+              "namespace":"e2eorg","name":"smoke-skill","display_name":"E2E Smoke Skill",
+              "content":{},
+              "manifest":{
+                "description":"CLI e2e test skill",
+                "capabilities":{"input_modalities":["text"],"output_modalities":["text"],"protocols":["mcp"],"permissions":[]},
+                "dependencies":{},"tags":["e2e","smoke"],"extra":null
+              }
+            }' | jq -r '.artifact.id'
+          echo "✅ setup complete"
+
+      # ══════════════════════════════════════════════════════════════════════════
+      # CLI: READ OPERATIONS
+      # ══════════════════════════════════════════════════════════════════════════
+      - name: "CLI — whoami"
+        run: |
+          OUT=$(./target/debug/agentverse \
+            --server "http://localhost:${PORT}" --token "${E2E_TOKEN}" whoami)
+          echo "$OUT"
+          echo "$OUT" | grep -q "e2e_user" || (echo "❌ whoami: e2e_user not found" && exit 1)
+          echo "✅ whoami OK"
+
+      - name: "CLI — list skill"
+        run: |
+          OUT=$(./target/debug/agentverse \
+            --server "http://localhost:${PORT}" --token "${E2E_TOKEN}" list skill)
+          echo "$OUT"
+          echo "$OUT" | grep -qE "e2eorg|smoke" || (echo "❌ list: no expected entries" && exit 1)
+          echo "✅ list OK"
+
+      - name: "CLI — search smoke"
+        run: |
+          OUT=$(./target/debug/agentverse \
+            --server "http://localhost:${PORT}" --token "${E2E_TOKEN}" search smoke)
+          echo "$OUT"
+          echo "$OUT" | grep -qiE "smoke|result" || (echo "❌ search: no match" && exit 1)
+          echo "✅ search OK"
+
+      - name: "CLI — get skill (latest and pinned version)"
+        run: |
+          OUT=$(./target/debug/agentverse \
+            --server "http://localhost:${PORT}" --token "${E2E_TOKEN}" get skill/e2eorg/smoke-skill)
+          echo "$OUT" | grep -q "smoke-skill" || (echo "❌ get (latest): no smoke-skill" && exit 1)
+          echo "  ✅ get (latest) OK"
+
+          OUT=$(./target/debug/agentverse \
+            --server "http://localhost:${PORT}" --token "${E2E_TOKEN}" get skill/e2eorg/smoke-skill@0.1.0)
+          echo "$OUT" | grep -q "v0.1.0" || (echo "❌ get@version: no v0.1.0" && exit 1)
+          echo "✅ get OK"
+
+      - name: "CLI — versions and stats"
+        run: |
+          OUT=$(./target/debug/agentverse \
+
+      # ══════════════════════════════════════════════════════════════════════════
+      # CLI: WRITE OPERATIONS
+      # ══════════════════════════════════════════════════════════════════════════
+      - name: "CLI — publish new skill via manifest file"
+        run: |
+          mkdir -p /tmp/e2e-cli-skill
+          cat > /tmp/e2e-cli-skill/SKILL.md << 'EOF'
+          ---
+          name: cli-published-skill
+          namespace: e2eorg
+          display_name: CLI Published Skill
+          description: Published via CLI in e2e test
+          version: 0.1.0
+          tags: [cli, e2e]
+          capabilities:
+            input_modalities: [text]
+            output_modalities: [text]
+            protocols: [mcp]
+            permissions: []
+          dependencies: {}
+          ---
+          # CLI Published Skill
+          This skill was published by the CLI e2e test.
+          EOF
+
+          OUT=$(./target/debug/agentverse \
+            --server "http://localhost:${PORT}" --token "${E2E_TOKEN}" \
+            publish /tmp/e2e-cli-skill/SKILL.md)
+          echo "$OUT"
+          echo "$OUT" | grep -qiE "publish|success|cli-published-skill" \
+            || (echo "❌ publish via manifest: no success message" && exit 1)
+          echo "✅ publish via manifest OK"
+
+      - name: "CLI — social (comment, like, unlike, rate)"
+        run: |
+          OUT=$(./target/debug/agentverse \
+            --server "http://localhost:${PORT}" --token "${E2E_TOKEN}" \
+            comment skill/e2eorg/smoke-skill "CLI e2e review comment")
+          echo "$OUT" | grep -qiE "comment|success" || (echo "❌ CLI comment failed" && exit 1)
+          echo "  ✅ CLI comment OK"
+
+          OUT=$(./target/debug/agentverse \
+            --server "http://localhost:${PORT}" --token "${E2E_TOKEN}" \
+            like skill/e2eorg/smoke-skill)
+          echo "$OUT" | grep -qiE "like|success" || (echo "❌ CLI like failed" && exit 1)
+          echo "  ✅ CLI like OK"
+
+          OUT=$(./target/debug/agentverse \
+            --server "http://localhost:${PORT}" --token "${E2E_TOKEN}" \
+            unlike skill/e2eorg/smoke-skill)
+          echo "$OUT" | grep -qiE "unlike|success" || (echo "❌ CLI unlike failed" && exit 1)
+          echo "  ✅ CLI unlike OK"
+
+          OUT=$(./target/debug/agentverse \
+            --server "http://localhost:${PORT}" --token "${E2E_TOKEN}" \
+            rate skill/e2eorg/smoke-skill 5)
+          echo "$OUT" | grep -qiE "rat|success|5" || (echo "❌ CLI rate failed" && exit 1)
+          echo "✅ social OK"
+
+      # ══════════════════════════════════════════════════════════════════════════
+      # CLI: AUTH COMMANDS
+      # ══════════════════════════════════════════════════════════════════════════
+      - name: "CLI — register and login commands"
+        run: |
+          OUT=$(./target/debug/agentverse \
+            --server "http://localhost:${PORT}" \
+            register --username cli_new_user --email cli@agentverse.test --password CliPass123!)
+          echo "$OUT" | grep -qiE "register|success|cli_new_user" \
+            || (echo "❌ CLI register: no success" && exit 1)
+          echo "  ✅ CLI register OK"
+
+          OUT=$(./target/debug/agentverse \
+            --server "http://localhost:${PORT}" \
+            login --username cli_new_user --password CliPass123!)
+          echo "$OUT" | grep -qiE "login|success|token" \
+            || (echo "❌ CLI login: no success" && exit 1)
+          echo "✅ CLI auth commands OK"
+
+      # ══════════════════════════════════════════════════════════════════════════
+      # TEARDOWN
+      # ══════════════════════════════════════════════════════════════════════════
+      - name: Dump server logs
+        if: always()
+        run: |
+          echo "=== e2e-cli server logs (last 100 lines) ==="
+          tail -100 /tmp/agentverse-cli/server.log 2>/dev/null || echo "(no log file)"
+
+      - name: Stop server
+        if: always()
+        run: kill "${SERVER_PID}" 2>/dev/null || true

@@ -1,0 +1,489 @@
+name: E2E — API Tests
+
+# Triggered by ci.yml via workflow_call, or manually for debugging.
+on:
+  workflow_call: {}
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_HTTP_TIMEOUT: "600"
+  CARGO_NET_RETRY: "10"
+
+jobs:
+  e2e-api:
+    name: E2E API Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: agentverse
+          POSTGRES_PASSWORD: agentverse_test
+          POSTGRES_DB: agentverse_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://agentverse:agentverse_test@localhost:5432/agentverse_e2e
+      JWT_SECRET: e2e-test-secret-do-not-use-in-production
+      PORT: "18080"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup vx
+        uses: loonghao/vx@main
+        with:
+          version: "0.8.0"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-key-prefix: vx-tools-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Setup tools (vx)
+        run: vx setup
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: e2e-api
+
+      - name: Build server and CLI (debug)
+        run: vx cargo build -p agentverse-server -p agentverse
+
+      - name: Start server in background
+        run: |
+          mkdir -p /tmp/agentverse-api
+          RUST_LOG=info,agentverse=debug \
+            nohup ./target/debug/agentverse-server \
+            > /tmp/agentverse-api/server.log 2>&1 &
+          echo "SERVER_PID=$!" >> "$GITHUB_ENV"
+
+      - name: Wait for server to be ready
+        run: |
+          echo "Waiting for http://localhost:${PORT}/health (up to 90s)..."
+          DEADLINE=$(( $(date +%s) + 90 ))
+          while true; do
+            if ! kill -0 "${SERVER_PID}" 2>/dev/null; then
+              echo "❌ Server crashed"; cat /tmp/agentverse-api/server.log; exit 1
+            fi
+            curl -sf "http://localhost:${PORT}/health" > /dev/null 2>&1 && echo "✅ Server ready" && break
+            [ "$(date +%s)" -ge "$DEADLINE" ] && { cat /tmp/agentverse-api/server.log; exit 1; }
+            sleep 3
+          done
+
+      # ══════════════════════════════════════════════════════════════════════════
+      # HEALTH & READINESS
+      # ══════════════════════════════════════════════════════════════════════════
+      - name: "Health — /health and /ready"
+        run: |
+          STATUS=$(curl -sf "http://localhost:${PORT}/health" | jq -r '.status')
+          [ "$STATUS" = "ok" ] || (echo "❌ health status=$STATUS" && exit 1)
+          echo "✅ /health OK"
+          curl -sf "http://localhost:${PORT}/ready" | jq .
+          echo "✅ /ready OK"
+
+      # ══════════════════════════════════════════════════════════════════════════
+      # AUTH: REGISTRATION & LOGIN
+      # ══════════════════════════════════════════════════════════════════════════
+      - name: "Auth — register and login"
+        run: |
+          REGISTER=$(curl -sf -X POST "http://localhost:${PORT}/api/v1/auth/register" \
+            -H 'content-type: application/json' \
+            -d '{"username":"e2e_user","email":"e2e@agentverse.test","password":"E2ePass123!"}')
+          echo "$REGISTER" | jq .
+          TOKEN=$(echo "$REGISTER" | jq -r '.access_token')
+          [ "$TOKEN" != "null" ] && [ -n "$TOKEN" ] || (echo "❌ No token in register response" && exit 1)
+          echo "E2E_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+          echo "✅ register OK"
+
+      # ══════════════════════════════════════════════════════════════════════════
+      # SKILL CRUD
+      # ══════════════════════════════════════════════════════════════════════════
+      - name: "Skill — create smoke-skill"
+        run: |
+          BODY=$(cat <<'EOF'
+          {
+            "namespace": "e2eorg", "name": "smoke-skill", "display_name": "E2E Smoke Skill",
+            "content": {},
+            "manifest": {
+              "description": "Created by E2E test",
+              "capabilities": {
+                "input_modalities": ["text"], "output_modalities": ["text"],
+                "protocols": ["mcp"], "permissions": []
+              },
+              "dependencies": {}, "tags": ["e2e","smoke"], "extra": null
+            }
+          }
+          EOF
+          )
+          RESP=$(curl -s -w '\n%{http_code}' -X POST "http://localhost:${PORT}/api/v1/skills" \
+            -H "authorization: Bearer ${E2E_TOKEN}" -H 'content-type: application/json' -d "$BODY")
+          HTTP=$(echo "$RESP" | tail -1); BODY_OUT=$(echo "$RESP" | head -n -1)
+          echo "$BODY_OUT" | jq .
+          [ "$HTTP" -ge 200 ] && [ "$HTTP" -lt 300 ] || (echo "❌ create skill HTTP $HTTP" && exit 1)
+          SKILL_ID=$(echo "$BODY_OUT" | jq -r '.artifact.id // empty')
+          [ -n "$SKILL_ID" ] || (echo "❌ No skill id" && exit 1)
+          echo "E2E_SKILL_ID=$SKILL_ID" >> "$GITHUB_ENV"
+          echo "✅ create skill OK: $SKILL_ID"
+
+      - name: "Skill — list skills and trending"
+        run: |
+          LIST=$(curl -sf "http://localhost:${PORT}/api/v1/skills")
+          TOTAL=$(echo "$LIST" | jq '.total // (.items | length)')
+          [ "$TOTAL" -ge 1 ] || (echo "❌ expected ≥1 skill" && exit 1)
+          echo "✅ list skills OK: $TOTAL"
+          curl -sf "http://localhost:${PORT}/api/v1/trending?kind=skill" | jq '.total'
+          echo "✅ trending OK"
+
+
+
+      # ══════════════════════════════════════════════════════════════════════════
+      # SOCIAL: LIKE & COMMENT
+      # ══════════════════════════════════════════════════════════════════════════
+      - name: "Social — like and comment"
+        run: |
+          LIKE_CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+            "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/likes" \
+            -H "authorization: Bearer ${E2E_TOKEN}" -H 'content-type: application/json' -d '{}')
+          [ "$LIKE_CODE" -ge 200 ] && [ "$LIKE_CODE" -lt 300 ] || (echo "❌ like HTTP $LIKE_CODE" && exit 1)
+          echo "✅ like OK"
+          CMT_CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+            "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/comments" \
+            -H "authorization: Bearer ${E2E_TOKEN}" -H 'content-type: application/json' \
+            -d '{"content":"E2E comment","kind":"review"}')
+          [ "$CMT_CODE" -ge 200 ] && [ "$CMT_CODE" -lt 300 ] || (echo "❌ comment HTTP $CMT_CODE" && exit 1)
+          echo "✅ comment OK"
+
+      # ══════════════════════════════════════════════════════════════════════════
+      # IMPORT FROM GITHUB
+      # ══════════════════════════════════════════════════════════════════════════
+      - name: "Import — ripgrep-search (tags + metadata round-trip)"
+        run: |
+          RESP=$(curl -s -w '\n%{http_code}' -X POST \
+            "http://localhost:${PORT}/api/v1/skills/import" \
+            -H "authorization: Bearer ${E2E_TOKEN}" -H 'content-type: application/json' \
+            -d '{"url":"https://github.com/loonghao/agentverse/tree/main/skills/ripgrep-search","namespace":"e2eorg"}')
+          CODE=$(echo "$RESP" | tail -1); BODY=$(echo "$RESP" | head -n -1)
+          [ "$CODE" -ge 200 ] && [ "$CODE" -lt 300 ] || (echo "❌ import HTTP $CODE" && exit 1)
+          NAME=$(echo "$BODY" | jq -r '.skill.name // empty')
+          [ "$NAME" = "ripgrep-search" ] || (echo "❌ expected ripgrep-search, got $NAME" && exit 1)
+          TAG_COUNT=$(echo "$BODY" | jq '.skill.tags | length')
+          [ "$TAG_COUNT" -ge 1 ] || (echo "❌ expected tags" && exit 1)
+          echo "✅ import ripgrep-search OK: tags=$TAG_COUNT"
+
+      - name: "Import — agentverse-openclaw (openclaw metadata)"
+        run: |
+          RESP=$(curl -s -w '\n%{http_code}' -X POST \
+            "http://localhost:${PORT}/api/v1/skills/import" \
+            -H "authorization: Bearer ${E2E_TOKEN}" -H 'content-type: application/json' \
+            -d '{"url":"https://github.com/loonghao/agentverse/tree/main/skills/agentverse-openclaw","namespace":"e2eorg"}')
+          CODE=$(echo "$RESP" | tail -1); BODY=$(echo "$RESP" | head -n -1)
+          [ "$CODE" -ge 200 ] && [ "$CODE" -lt 300 ] || (echo "❌ import openclaw HTTP $CODE" && exit 1)
+          NAME=$(echo "$BODY" | jq -r '.skill.name // empty')
+          [ "$NAME" = "agentverse-cli" ] || (echo "❌ expected agentverse-cli, got $NAME" && exit 1)
+          echo "✅ import openclaw OK"
+
+      # ══════════════════════════════════════════════════════════════════════════
+      # AUTH HARDENING
+      # ══════════════════════════════════════════════════════════════════════════
+      - name: "Auth — hardening (wrong password, duplicate, refresh, me, profile)"
+        run: |
+          HTTP=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+            "http://localhost:${PORT}/api/v1/auth/login" -H 'content-type: application/json' \
+            -d '{"username":"e2e_user","password":"totallyWrongPassword!"}')
+          [ "$HTTP" -eq 401 ] || (echo "❌ expected 401, got $HTTP" && exit 1)
+          echo "  ✅ wrong password → 401"
+
+          HTTP=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+            "http://localhost:${PORT}/api/v1/auth/register" -H 'content-type: application/json' \
+            -d '{"username":"e2e_user","email":"dup@agentverse.test","password":"DupPass123!"}')
+          [ "$HTTP" -eq 409 ] || (echo "❌ expected 409, got $HTTP" && exit 1)
+          echo "  ✅ duplicate username → 409"
+
+          NEW_TOKEN=$(curl -sf -X POST "http://localhost:${PORT}/api/v1/auth/refresh" \
+            -H "authorization: Bearer ${E2E_TOKEN}" | jq -r '.access_token // empty')
+          [ -n "$NEW_TOKEN" ] || (echo "❌ no new token in refresh" && exit 1)
+          echo "  ✅ token refresh OK"
+
+          USERNAME=$(curl -sf "http://localhost:${PORT}/api/v1/auth/me" \
+            -H "authorization: Bearer ${E2E_TOKEN}" | jq -r '.user.username // empty')
+          [ "$USERNAME" = "e2e_user" ] || (echo "❌ expected e2e_user, got $USERNAME" && exit 1)
+          echo "  ✅ /auth/me OK"
+
+          EMAIL=$(curl -sf -X PUT "http://localhost:${PORT}/api/v1/auth/me" \
+            -H "authorization: Bearer ${E2E_TOKEN}" -H 'content-type: application/json' \
+            -d '{"email":"e2e_updated@agentverse.test"}' | jq -r '.user.email // empty')
+          [ "$EMAIL" = "e2e_updated@agentverse.test" ] || (echo "❌ email not updated" && exit 1)
+          echo "  ✅ update profile OK"
+
+          PW=$(curl -sf "http://localhost:${PORT}/api/v1/users/e2e_user" | jq -r '.user.password_hash // "absent"')
+          [ "$PW" = "absent" ] || (echo "❌ password_hash exposed!" && exit 1)
+          echo "  ✅ password_hash not exposed"
+          echo "✅ auth hardening OK"
+
+      # ══════════════════════════════════════════════════════════════════════════
+      # VERSIONING LIFECYCLE
+      # ══════════════════════════════════════════════════════════════════════════
+      - name: "Versioning — patch, minor, history, pinned fetch"
+        run: |
+          VER=$(curl -sf -X POST "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/publish" \
+            -H "authorization: Bearer ${E2E_TOKEN}" -H 'content-type: application/json' \
+            -d '{"content":{"schema_version":"1.1"},"changelog":"patch","bump":"patch"}' \
+            | jq -r '.version.version // empty')
+          [ -n "$VER" ] || (echo "❌ no version in patch publish" && exit 1)
+          echo "  ✅ patch publish: $VER"
+
+          VER=$(curl -sf -X POST "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/publish" \
+            -H "authorization: Bearer ${E2E_TOKEN}" -H 'content-type: application/json' \
+            -d '{"content":{"schema_version":"2.0"},"changelog":"minor","bump":"minor"}' \
+            | jq -r '.version.version // empty')
+          [ -n "$VER" ] || (echo "❌ no version in minor publish" && exit 1)
+          echo "  ✅ minor publish: $VER"
+
+          TOTAL=$(curl -sf "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/versions" \
+            | jq '.total // (.versions | length)')
+          [ "$TOTAL" -ge 3 ] || (echo "❌ expected ≥3 versions, got $TOTAL" && exit 1)
+          echo "  ✅ version history: $TOTAL"
+
+          PINNED=$(curl -sf "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/0.1.0" \
+            | jq -r '.version.version // empty')
+          [ "$PINNED" = "0.1.0" ] || (echo "❌ pinned wrong: $PINNED" && exit 1)
+          echo "✅ versioning OK"
+
+
+      # ══════════════════════════════════════════════════════════════════════════
+      # RATING SYSTEM
+      # ══════════════════════════════════════════════════════════════════════════
+      - name: "Rating — add, validate bounds, list + stats"
+        run: |
+          SCORE=$(curl -sf -X POST "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/ratings" \
+            -H "authorization: Bearer ${E2E_TOKEN}" -H 'content-type: application/json' \
+            -d '{"score":5,"review_text":"Works perfectly!"}' | jq -r '.rating.score // empty')
+          [ "$SCORE" = "5" ] || (echo "❌ expected score=5, got $SCORE" && exit 1)
+          echo "  ✅ 5-star rating OK"
+
+          HTTP=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+            "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/ratings" \
+            -H "authorization: Bearer ${E2E_TOKEN}" -H 'content-type: application/json' -d '{"score":0}')
+          [ "$HTTP" -eq 400 ] || (echo "❌ expected 400 for score=0, got $HTTP" && exit 1)
+          echo "  ✅ score=0 → 400"
+
+          HTTP=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+            "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/ratings" \
+            -H "authorization: Bearer ${E2E_TOKEN}" -H 'content-type: application/json' -d '{"score":6}')
+          [ "$HTTP" -eq 400 ] || (echo "❌ expected 400 for score=6, got $HTTP" && exit 1)
+          echo "  ✅ score=6 → 400"
+
+          TOTAL=$(curl -sf "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/ratings" \
+            | jq '.total // (.ratings | length)')
+          [ "$TOTAL" -ge 1 ] || (echo "❌ expected ≥1 rating" && exit 1)
+          AVG=$(curl -sf "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/stats" | jq '.avg_rating')
+          [ "$AVG" != "null" ] || (echo "❌ avg_rating should not be null" && exit 1)
+          echo "✅ rating system OK: avg=$AVG"
+
+      # ══════════════════════════════════════════════════════════════════════════
+      # COMMENT THREADING
+      # ══════════════════════════════════════════════════════════════════════════
+      - name: "Comment — threading (add, reply, list, update, delete)"
+        run: |
+          COMMENT_ID=$(curl -sf -X POST \
+            "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/comments" \
+            -H "authorization: Bearer ${E2E_TOKEN}" -H 'content-type: application/json' \
+            -d '{"content":"Top-level review","kind":"review"}' | jq -r '.comment.id // empty')
+          [ -n "$COMMENT_ID" ] || (echo "❌ no comment.id" && exit 1)
+          echo "  ✅ review comment: $COMMENT_ID"
+
+          REPLY_ID=$(curl -sf -X POST \
+            "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/comments" \
+            -H "authorization: Bearer ${E2E_TOKEN}" -H 'content-type: application/json' \
+            -d "{\"content\":\"Reply\",\"kind\":\"review\",\"parent_id\":\"${COMMENT_ID}\"}" \
+            | jq -r '.comment.id // empty')
+          [ -n "$REPLY_ID" ] || (echo "❌ no reply comment.id" && exit 1)
+          echo "  ✅ threaded reply: $REPLY_ID"
+
+          TOTAL=$(curl -sf "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/comments" \
+            | jq '.total // (.comments | length)')
+          [ "$TOTAL" -ge 3 ] || (echo "❌ expected ≥3 comments, got $TOTAL" && exit 1)
+          echo "  ✅ list comments: $TOTAL"
+
+          CONTENT=$(curl -sf -X PUT \
+            "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/comments/${COMMENT_ID}" \
+            -H "authorization: Bearer ${E2E_TOKEN}" -H 'content-type: application/json' \
+            -d '{"content":"Updated content"}' | jq -r '.comment.content // empty')
+          [ "$CONTENT" = "Updated content" ] || (echo "❌ content not updated" && exit 1)
+          echo "  ✅ update comment OK"
+
+          HTTP=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
+            "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/comments/${REPLY_ID}" \
+            -H "authorization: Bearer ${E2E_TOKEN}")
+          [ "$HTTP" -eq 200 ] || (echo "❌ expected 200 on delete, got $HTTP" && exit 1)
+          echo "✅ comment threading OK"
+
+      # ══════════════════════════════════════════════════════════════════════════
+      # TAG MANAGEMENT
+      # ══════════════════════════════════════════════════════════════════════════
+      - name: "Tags — add, idempotent add, remove"
+        run: |
+          RESP=$(curl -sf -X POST "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/tags" \
+            -H "authorization: Bearer ${E2E_TOKEN}" -H 'content-type: application/json' \
+            -d '{"tag":"e2e-tested"}')
+          echo "$RESP" | jq -e '.tags | index("e2e-tested") != null' > /dev/null \
+            || (echo "❌ tag e2e-tested not in response" && exit 1)
+          echo "  ✅ add tag OK"
+
+          COUNT=$(curl -sf -X POST "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/tags" \
+            -H "authorization: Bearer ${E2E_TOKEN}" -H 'content-type: application/json' \
+            -d '{"tag":"e2e-tested"}' | jq '[.tags[] | select(. == "e2e-tested")] | length')
+          [ "$COUNT" -eq 1 ] || (echo "❌ tag duplicated: $COUNT copies" && exit 1)
+          echo "  ✅ idempotent add OK"
+
+          HTTP=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
+            "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/tags/e2e-tested" \
+            -H "authorization: Bearer ${E2E_TOKEN}")
+          [ "$HTTP" -eq 200 ] || (echo "❌ expected 200, got $HTTP" && exit 1)
+          echo "✅ tags OK"
+
+      # ══════════════════════════════════════════════════════════════════════════
+      # ARTIFACT FORK
+      # ══════════════════════════════════════════════════════════════════════════
+      - name: "Fork — fork smoke-skill and verify"
+        run: |
+          RESP=$(curl -sf -X POST "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/fork" \
+            -H "authorization: Bearer ${E2E_TOKEN}" -H 'content-type: application/json' \
+            -d '{"new_name":"smoke-skill-fork","new_namespace":"e2eorg"}')
+          FORK_NAME=$(echo "$RESP" | jq -r '.artifact.name // empty')
+          FORK_VER=$(echo "$RESP" | jq -r '.version.version // empty')
+          [ "$FORK_NAME" = "smoke-skill-fork" ] || (echo "❌ fork name: $FORK_NAME" && exit 1)
+          [ "$FORK_VER" = "0.1.0" ] || (echo "❌ fork version: $FORK_VER" && exit 1)
+          echo "  ✅ fork created: ${FORK_NAME}@${FORK_VER}"
+
+          NAME=$(curl -sf "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill-fork" \
+            | jq -r '.artifact.name // empty')
+          [ "$NAME" = "smoke-skill-fork" ] || (echo "❌ fork not retrievable" && exit 1)
+          echo "✅ fork OK"
+
+      # ══════════════════════════════════════════════════════════════════════════
+      # PACKAGE MANAGEMENT
+      # ══════════════════════════════════════════════════════════════════════════
+      - name: "Package — register, list, get, delete"
+        run: |
+          RESP=$(curl -s -w '\n%{http_code}' -X POST \
+            "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/packages" \
+            -H "authorization: Bearer ${E2E_TOKEN}" -H 'content-type: application/json' \
+            -d '{"source_type":"github_repo","download_url":"https://github.com/loonghao/agentverse/tree/main/skills/ripgrep-search"}')
+          HTTP=$(echo "$RESP" | tail -1); BODY=$(echo "$RESP" | head -n -1)
+          [ "$HTTP" -eq 201 ] || (echo "❌ expected 201, got $HTTP" && exit 1)
+          PKG_ID=$(echo "$BODY" | jq -r '.package.id // empty')
+          [ -n "$PKG_ID" ] || (echo "❌ no package.id" && exit 1)
+          echo "  ✅ register package: $PKG_ID"
+
+          TOTAL=$(curl -sf "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/packages" \
+            | jq '.total // (.packages | length)')
+          [ "$TOTAL" -ge 1 ] || (echo "❌ expected ≥1 package" && exit 1)
+          echo "  ✅ list packages: $TOTAL"
+
+          ID=$(curl -sf "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/packages/${PKG_ID}" \
+            | jq -r '.package.id // empty')
+          [ "$ID" = "$PKG_ID" ] || (echo "❌ package id mismatch" && exit 1)
+          echo "  ✅ get by ID OK"
+
+          HTTP=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
+            "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/packages/${PKG_ID}" \
+            -H "authorization: Bearer ${E2E_TOKEN}")
+          [ "$HTTP" -eq 200 ] || (echo "❌ delete: expected 200, got $HTTP" && exit 1)
+          echo "✅ package management OK"
+
+
+      # ══════════════════════════════════════════════════════════════════════════
+      # PERMISSION GUARDS & INPUT VALIDATION
+      # ══════════════════════════════════════════════════════════════════════════
+      - name: "Permission — cross-user restrictions and unauthenticated guards"
+        run: |
+          TOKEN2=$(curl -sf -X POST "http://localhost:${PORT}/api/v1/auth/register" \
+            -H 'content-type: application/json' \
+            -d '{"username":"e2e_user2","email":"user2@agentverse.test","password":"User2Pass456!"}' \
+            | jq -r '.access_token // empty')
+          [ -n "$TOKEN2" ] || (echo "❌ no token for e2e_user2" && exit 1)
+
+          HTTP=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+            "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/publish" \
+            -H "authorization: Bearer ${TOKEN2}" -H 'content-type: application/json' \
+            -d '{"content":{"malicious":true},"bump":"major"}')
+          [ "$HTTP" -eq 403 ] || (echo "❌ expected 403 for non-author publish, got $HTTP" && exit 1)
+          echo "  ✅ non-author publish → 403"
+
+          HTTP=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+            "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/packages" \
+            -H "authorization: Bearer ${TOKEN2}" -H 'content-type: application/json' \
+            -d '{"source_type":"url","download_url":"http://evil.example.com/bad.zip"}')
+          [ "$HTTP" -eq 403 ] || (echo "❌ expected 403 for non-author package register, got $HTTP" && exit 1)
+          echo "  ✅ non-author package → 403"
+
+          HTTP=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+            "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/publish" \
+            -H 'content-type: application/json' -d '{"content":{},"bump":"patch"}')
+          [ "$HTTP" -eq 401 ] || (echo "❌ expected 401 unauthenticated, got $HTTP" && exit 1)
+          echo "✅ permission guards OK"
+
+      - name: "Validation — username and password length limits"
+        run: |
+          HTTP=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+            "http://localhost:${PORT}/api/v1/auth/register" -H 'content-type: application/json' \
+            -d '{"username":"ab","password":"ValidPass123!"}')
+          [ "$HTTP" -eq 400 ] || (echo "❌ expected 400 for short username, got $HTTP" && exit 1)
+          echo "  ✅ short username → 400"
+
+          HTTP=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+            "http://localhost:${PORT}/api/v1/auth/register" -H 'content-type: application/json' \
+            -d '{"username":"validuser","password":"short"}')
+          [ "$HTTP" -eq 400 ] || (echo "❌ expected 400 for short password, got $HTTP" && exit 1)
+          echo "✅ input validation OK"
+
+      # ══════════════════════════════════════════════════════════════════════════
+      # UNLIKE, USER ARTIFACTS, SEARCH
+      # ══════════════════════════════════════════════════════════════════════════
+      - name: "Social — unlike, user artifacts, search"
+        run: |
+          HTTP=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
+            "http://localhost:${PORT}/api/v1/skills/e2eorg/smoke-skill/likes" \
+            -H "authorization: Bearer ${E2E_TOKEN}")
+          [ "$HTTP" -eq 200 ] || (echo "❌ expected 200 on unlike, got $HTTP" && exit 1)
+          echo "  ✅ unlike OK"
+
+          TOTAL=$(curl -sf "http://localhost:${PORT}/api/v1/users/e2e_user/artifacts" \
+            | jq '.total // (.items | length)')
+          [ "$TOTAL" -ge 1 ] || (echo "❌ expected ≥1 artifact by e2e_user, got $TOTAL" && exit 1)
+          echo "  ✅ user artifacts: $TOTAL"
+
+          TOTAL=$(curl -sf "http://localhost:${PORT}/api/v1/search?q=smoke&limit=10" \
+            | jq '.total // (.items | length)')
+          [ "$TOTAL" -ge 1 ] || (echo "❌ search 'smoke' returned 0 results" && exit 1)
+          echo "  ✅ text search: $TOTAL result(s)"
+
+          BAD=$(curl -sf "http://localhost:${PORT}/api/v1/search?q=e2e&kind=skill&limit=20" \
+            | jq '[.items[] | select(.kind != "skill")] | length')
+          [ "$BAD" -eq 0 ] || (echo "❌ found $BAD non-skill results with kind=skill filter" && exit 1)
+          echo "✅ search OK"
+
+      # ══════════════════════════════════════════════════════════════════════════
+      # TEARDOWN
+      # ══════════════════════════════════════════════════════════════════════════
+      - name: Dump server logs
+        if: always()
+        run: |
+          echo "=== e2e-api server logs (last 100 lines) ==="
+          tail -100 /tmp/agentverse-api/server.log 2>/dev/null || echo "(no log file)"
+
+      - name: Stop server
+        if: always()
+        run: kill "${SERVER_PID}" 2>/dev/null || true
