@@ -357,7 +357,7 @@ pub async fn import_skill(
             ))
         })?;
 
-    // Parse the full SKILL.md frontmatter — tags, metadata, version, etc.
+    // Parse the full SKILL.md frontmatter — kind, tags, metadata, version, etc.
     let fallback_name = info
         .skill_path
         .split('/')
@@ -366,6 +366,15 @@ pub async fn import_skill(
         .to_owned();
     let parsed = parse_skill_md(&skill_md, &fallback_name);
     let namespace = req.namespace.unwrap_or_else(|| info.owner.clone());
+
+    // Convert the parsed kind string to an enum (defaults to Skill for unknown values).
+    let artifact_kind = match parsed.kind.as_str() {
+        "soul" => ArtifactKind::Soul,
+        "agent" => ArtifactKind::Agent,
+        "workflow" => ArtifactKind::Workflow,
+        "prompt" => ArtifactKind::Prompt,
+        _ => ArtifactKind::Skill,
+    };
 
     // Merge github_repo source metadata with the skill's own metadata block.
     let mut extra = info.to_metadata_json();
@@ -377,10 +386,10 @@ pub async fn import_skill(
         }
     }
 
-    // Resolve or create the skill artifact
+    // Resolve or create the artifact (using the kind parsed from SKILL.md).
     let (artifact, created) = match state
         .artifacts
-        .find_by_namespace_name(&ArtifactKind::Skill, &namespace, &parsed.name)
+        .find_by_namespace_name(&artifact_kind, &namespace, &parsed.name)
         .await?
     {
         Some(existing) => (existing, false),
@@ -396,7 +405,7 @@ pub async fn import_skill(
 
             let artifact = Artifact {
                 id: Uuid::new_v4(),
-                kind: ArtifactKind::Skill,
+                kind: artifact_kind,
                 namespace: namespace.clone(),
                 name: parsed.name.clone(),
                 display_name: None,

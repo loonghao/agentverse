@@ -1,5 +1,6 @@
 ---
 name: release-notes-writer
+kind: skill
 description: Generates structured release notes from git commit history, PR titles, and linked issues. Supports Conventional Commits and custom formats.
 tags: [release, ci, documentation, changelog]
 version: "0.1.0"

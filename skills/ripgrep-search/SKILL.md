@@ -1,5 +1,6 @@
 ---
 name: ripgrep-search
+kind: skill
 description: "Blazing-fast code and file search using ripgrep (rg). Recursively searches patterns across large codebases with .gitignore awareness, type filters, and context lines."
 version: "0.1.0"
 tags: [search, code, cli, productivity]

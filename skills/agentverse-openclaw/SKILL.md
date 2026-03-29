@@ -1,5 +1,6 @@
 ---
 name: agentverse-cli
+kind: skill
 description: "Publish, discover, and manage AI skills, agents, workflows, souls and prompts from the AgentVerse marketplace. Use when working with the agentverse CLI to search/publish artifacts, authenticate, or manage AI agent ecosystem components."
 version: 0.1.4
 metadata:

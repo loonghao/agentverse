@@ -1,5 +1,6 @@
 ---
 name: gh-pr-reviewer
+kind: skill
 description: "Fetch GitHub Pull Request diffs, metadata, and CI status using the gh CLI. Summarise changes, check review status, and post structured review comments."
 version: "0.1.0"
 tags: [github, pull-request, code-review, ci]

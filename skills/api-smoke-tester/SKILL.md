@@ -1,5 +1,6 @@
 ---
 name: api-smoke-tester
+kind: skill
 description: Runs a suite of smoke tests against any REST API and reports status, latency, and failure details.
 tags: [testing, ci, api, http]
 version: "0.1.0"

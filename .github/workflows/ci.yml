@@ -196,10 +196,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Only name + description are universally required (matches the standard format).
-          # version, author, license are recommended but optional.
+          # name + description are universally required (matches the AgentVerse standard format).
+          # kind, version, author, license are recommended but optional (kind defaults to "skill").
           REQUIRED_FIELDS=(name description)
-          RECOMMENDED_FIELDS=(version author license)
+          RECOMMENDED_FIELDS=(kind version author license)
+          VALID_KINDS=(skill soul prompt workflow agent)
           ERRORS=0
 
           for skill_md in skills/*/SKILL.md; do
@@ -224,6 +225,21 @@ jobs:
                 echo "  ⚠️  Missing recommended field: ${field}"
               fi
             done
+
+            # Validate kind value when present
+            if grep -qE "^kind:" "$skill_md"; then
+              KIND_VAL=$(grep -E "^kind:" "$skill_md" | head -1 | sed 's/^kind:[[:space:]]*//')
+              VALID=false
+              for vk in "${VALID_KINDS[@]}"; do
+                [ "$KIND_VAL" = "$vk" ] && VALID=true && break
+              done
+              if [ "$VALID" = "false" ]; then
+                echo "  ❌ Invalid kind '${KIND_VAL}'. Must be one of: ${VALID_KINDS[*]}"
+                ERRORS=$((ERRORS + 1))
+              else
+                echo "  ✓ kind=${KIND_VAL}"
+              fi
+            fi
 
             echo "  ✅ OK"
           done
@@ -1142,3 +1158,49 @@ jobs:
       - name: Stop server
         if: always()
         run: kill "${SERVER_PID}" 2>/dev/null || true
+
+  # ── Auto-merge on CI success ─────────────────────────────────────────────────
+  # Automatically enables squash-merge for the PR once all required CI jobs
+  # pass.  Release-please PRs are excluded — they must be reviewed and merged
+  # manually so that the changelog and version bump can be verified.
+  auto-merge:
+    name: Auto-merge on CI success
+    runs-on: ubuntu-latest
+    # Only run on pull_request events (not on push to main).
+    if: github.event_name == 'pull_request'
+    # Wait for all meaningful CI gates before enabling auto-merge.
+    needs: [quality, test, build, validate-skills, e2e]
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Skip release-please PRs
+        id: check-pr
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          HEAD_BRANCH: ${{ github.head_ref }}
+        run: |
+          # release-please opens PRs with a predictable title prefix and branch name.
+          if echo "$PR_TITLE" | grep -qE '^(chore|release)(\(.+\))?: release'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "ℹ️  Skipping auto-merge: this is a release-please PR."
+          elif echo "$HEAD_BRANCH" | grep -qE '^release-please--'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "ℹ️  Skipping auto-merge: release-please branch detected."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Enable auto-merge (squash)
+        if: steps.check-pr.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh pr merge "$PR_NUMBER" \
+            --repo "$REPO" \
+            --auto \
+            --squash \
+            --delete-branch
+          echo "✅ Auto-merge enabled for PR #${PR_NUMBER}"
