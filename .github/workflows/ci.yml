@@ -1293,6 +1293,114 @@ jobs:
         if: always()
         run: kill "${SERVER_PID}" 2>/dev/null || true
 
+  # ── Openclaw Agent E2E ──────────────────────────────────────────────────────
+  # Runs the full 13-step openclaw agent lifecycle scenario from
+  # scripts/openclaw_e2e.sh directly on the CI runner (no docker-in-docker).
+  # The AGENTVERSE_CLI env var points to the debug binary so the script does
+  # not try to resolve /usr/local/bin/agentverse.
+  openclaw-e2e:
+    name: Openclaw Agent E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [e2e]
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: agentverse
+          POSTGRES_PASSWORD: agentverse_test
+          POSTGRES_DB: agentverse_openclaw_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://agentverse:agentverse_test@localhost:5432/agentverse_openclaw_e2e
+      JWT_SECRET: openclaw-e2e-test-secret-do-not-use-in-production
+      PORT: "18081"
+      # Variables consumed by openclaw_e2e.sh
+      AGENTVERSE_CLI: "./target/debug/agentverse"
+      AGENTVERSE_URL: "http://localhost:18081"
+      AGENT_USER: "openclaw-e2e-agent"
+      AGENT_PASS: "OpenclawPass1!"
+      AGENT_EMAIL: "openclaw-e2e@agentverse.test"
+      TEST_SKILL_NS: "openclaw-e2e"
+      TEST_SKILL_NAME: "code-helper"
+      AGENT_KIND: "openclaw"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup vx
+        uses: loonghao/vx@main
+        with:
+          version: "0.8.0"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-key-prefix: vx-tools-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Setup tools (vx)
+        run: vx setup
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: openclaw-e2e
+
+      - name: Build server and CLI (debug)
+        run: vx cargo build -p agentverse-server -p agentverse
+
+      - name: Start server in background
+        run: |
+          mkdir -p /tmp/agentverse-openclaw
+          RUST_LOG=info,agentverse=debug \
+            nohup ./target/debug/agentverse-server \
+            > /tmp/agentverse-openclaw/server.log 2>&1 &
+          echo "SERVER_PID=$!" >> "$GITHUB_ENV"
+          echo "Server started with PID $!"
+
+      - name: Wait for server to be ready
+        run: |
+          echo "Waiting for http://localhost:${PORT}/health (up to 90s)..."
+          DEADLINE=$(( $(date +%s) + 90 ))
+          while true; do
+            if ! kill -0 "${SERVER_PID}" 2>/dev/null; then
+              echo "❌ Server process (PID=${SERVER_PID}) exited unexpectedly"
+              cat /tmp/agentverse-openclaw/server.log || true
+              exit 1
+            fi
+            if curl -sf "http://localhost:${PORT}/health" > /dev/null 2>&1; then
+              echo "✅ Server is ready"
+              break
+            fi
+            if [ "$(date +%s)" -ge "$DEADLINE" ]; then
+              echo "❌ Server did not respond within 90 seconds"
+              cat /tmp/agentverse-openclaw/server.log || true
+              exit 1
+            fi
+            echo "  still waiting... ($(date -u +%T))"
+            sleep 3
+          done
+
+      - name: Run Openclaw E2E scenario
+        run: |
+          chmod +x scripts/openclaw_e2e.sh
+          bash scripts/openclaw_e2e.sh
+
+      - name: Dump server logs
+        if: always()
+        run: |
+          echo "=== Openclaw E2E server logs (last 100 lines) ==="
+          tail -100 /tmp/agentverse-openclaw/server.log 2>/dev/null || echo "(no log file)"
+
+      - name: Stop server
+        if: always()
+        run: kill "${SERVER_PID}" 2>/dev/null || true
+
   # ── Auto-merge on CI success ─────────────────────────────────────────────────
   # Automatically enables squash-merge for the PR once all required CI jobs
   # pass.  Release-please PRs are excluded — they must be reviewed and merged
@@ -1303,7 +1411,7 @@ jobs:
     # Only run on pull_request events (not on push to main).
     if: github.event_name == 'pull_request'
     # Wait for all meaningful CI gates before enabling auto-merge.
-    needs: [quality, test, build, validate-skills, e2e]
+    needs: [quality, test, build, validate-skills, e2e, openclaw-e2e]
     permissions:
       contents: write
       pull-requests: write
