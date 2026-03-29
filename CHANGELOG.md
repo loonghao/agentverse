@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.8](https://github.com/loonghao/agentverse/compare/v0.1.7...v0.1.8) (2026-03-29)
+
+
+### Documentation
+
+* **manifest:** add OpenClaw extension and validation rules sections ([09655bb](https://github.com/loonghao/agentverse/commit/09655bb0005d201d7e08cc2d2525010ca1f138df))
+* **server:** add bkrepo env vars to deployment examples ([09655bb](https://github.com/loonghao/agentverse/commit/09655bb0005d201d7e08cc2d2525010ca1f138df))
+* **server:** update configuration.md ([09655bb](https://github.com/loonghao/agentverse/commit/09655bb0005d201d7e08cc2d2525010ca1f138df))
+* **storage:** rewrite bk-repo.md for native bkrepo backend ([09655bb](https://github.com/loonghao/agentverse/commit/09655bb0005d201d7e08cc2d2525010ca1f138df))
+* **storage:** update index.md backend table ([09655bb](https://github.com/loonghao/agentverse/commit/09655bb0005d201d7e08cc2d2525010ca1f138df))
+* update docs and fix GitHub Pages deployment ([09655bb](https://github.com/loonghao/agentverse/commit/09655bb0005d201d7e08cc2d2525010ca1f138df))
+* **vitepress:** add Manifest link to top navigation bar ([09655bb](https://github.com/loonghao/agentverse/commit/09655bb0005d201d7e08cc2d2525010ca1f138df))
+
 ## [0.1.7](https://github.com/loonghao/agentverse/compare/v0.1.6...v0.1.7) (2026-03-28)
 
 
