@@ -10,7 +10,7 @@ AgentVerse stores artifact **metadata** in PostgreSQL. Artifact **package archiv
 | [S3 / COS / MinIO / R2](/storage/s3-compatible) | `s3` | Production — most common |
 | [GitHub Releases](/storage/github-releases) | `github` | Open-source projects |
 | [Custom HTTP](/storage/custom) | `custom` | Internal org storage |
-| [BK-Repo (蓝鲸)](/storage/bk-repo) | `custom` | Tencent BlueKing ecosystem |
+| [BK-Repo (蓝鲸)](/storage/bk-repo) | `bkrepo` | Tencent BlueKing ecosystem ⭐ Default |
 
 ## Configuration
 
@@ -18,7 +18,7 @@ The backend is set in `config/default.toml` under `[object_store]`:
 
 ```toml
 [object_store]
-backend = "local"   # local | s3 | github | custom
+backend = "bkrepo"   # bkrepo | local | s3 | github | custom
 ```
 
 You can also override at runtime with the `OBJECT_STORE_BACKEND` environment variable.
@@ -48,7 +48,7 @@ graph TD
     D -->|No| F{Have S3/COS/MinIO?}
     F -->|Yes| G[s3]
     F -->|No| H{BlueKing ecosystem?}
-    H -->|Yes| I[bk-repo via custom]
+    H -->|Yes| I[bkrepo]
     H -->|No| J[custom HTTP]
 ```
 

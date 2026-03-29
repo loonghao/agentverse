@@ -46,13 +46,26 @@ anonymous_read         = true
 # Require email verification before publishing
 require_verified_email = false
 
-# Object store is documented in Storage Backends
+# Object store — see Storage Backends docs for all backend options
+# Default: bkrepo (Tencent BlueKing bk-repo)
 [object_store]
-backend = "local"
+backend = "bkrepo"
 
-[object_store.local]
-base_dir  = "/tmp/agentverse-packages"
-serve_url = "http://localhost:8080/files"
+[object_store.bkrepo]
+endpoint  = "https://bkrepo.example.com"
+project   = "my-project"
+repo      = "agentverse-packages"
+username  = "admin"
+password  = "change-me-in-production"
+overwrite = true
+
+# ── Local filesystem (dev / E2E tests) ────────────────────────────────────────
+# [object_store]
+# backend = "local"
+#
+# [object_store.local]
+# base_dir  = "/tmp/agentverse-packages"
+# serve_url = "http://localhost:8080/files"
 ```
 
 ## Environment Variables
@@ -66,7 +79,9 @@ All config keys can be overridden with environment variables using the pattern `
 | `JWT_SECRET` | **Must change in production!** JWT signing secret | `openssl rand -hex 32` |
 | `PORT` | Server listening port | `8080` |
 | `RUST_LOG` | Log level | `info`, `debug`, `agentverse=debug` |
-| `OBJECT_STORE_BACKEND` | Override storage backend at runtime | `s3`, `local`, `github`, `custom` |
+| `OBJECT_STORE_BACKEND` | Override storage backend at runtime | `bkrepo`, `s3`, `local`, `github`, `custom` |
+| `BKREPO_USERNAME` | BK-Repo authentication username | `agentverse-service` |
+| `BKREPO_PASSWORD` | BK-Repo authentication password | _(secret)_ |
 | `AGENTVERSE_ANONYMOUS_READ` | Allow unauthenticated reads | `true` / `false` |
 
 ## Security Checklist

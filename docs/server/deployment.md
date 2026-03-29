@@ -23,6 +23,9 @@ services:
       REDIS_URL: ${REDIS_URL}
       JWT_SECRET: ${JWT_SECRET}
       RUST_LOG: "agentverse=info,tower_http=warn"
+      # BK-Repo storage backend (default since v0.1.7)
+      BKREPO_USERNAME: ${BKREPO_USERNAME}
+      BKREPO_PASSWORD: ${BKREPO_PASSWORD}
     ports:
       - "127.0.0.1:8080:8080"
     healthcheck:
@@ -72,6 +75,16 @@ spec:
                 secretKeyRef:
                   name: agentverse-secrets
                   key: jwt-secret
+            - name: BKREPO_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: agentverse-secrets
+                  key: bkrepo-username
+            - name: BKREPO_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: agentverse-secrets
+                  key: bkrepo-password
           readinessProbe:
             httpGet:
               path: /health
