@@ -1,5 +1,7 @@
 # Workflow Manifest
 
+> **English** · [中文](workflow_zh.md)
+
 A **workflow** artifact defines a multi-step, directed-acyclic-graph (DAG) pipeline that
 composes AgentVerse skills, agents, and external commands into a reproducible sequence.
 Workflows are declarative, version-controlled, and exportable to popular orchestration formats.

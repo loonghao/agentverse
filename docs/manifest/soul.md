@@ -1,5 +1,7 @@
 # Soul Manifest
 
+> **English** · [中文](soul_zh.md)
+
 A **soul** defines the personality, tone, values, and behavioural constraints of an AI agent.
 Souls are composable, versionable, and shareable across the AgentVerse registry.
 

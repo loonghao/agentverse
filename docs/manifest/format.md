@@ -1,5 +1,7 @@
 # Manifest Format
 
+> **English** · [中文](format_zh.md)
+
 The `agentverse.toml` manifest file describes your artifact to the registry. It is used by `agentverse publish` to create or update artifacts.
 
 ## Full Example

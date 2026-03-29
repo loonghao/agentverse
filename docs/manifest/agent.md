@@ -1,5 +1,7 @@
 # Agent Manifest
 
+> **English** · [中文](agent_zh.md)
+
 An **agent** artifact is a fully-described autonomous AI agent — including its soul (personality),
 capabilities (skills it can invoke), protocols it speaks, permissions, and memory configuration.
 Agents are composable, shareable, and directly deployable via MCP, A2A, or OpenAI Functions.

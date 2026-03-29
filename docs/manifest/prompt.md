@@ -1,5 +1,7 @@
 # Prompt Manifest
 
+> **English** · [中文](prompt_zh.md)
+
 A **prompt** artifact stores versioned, reusable prompt templates — the building blocks
 for LLM-based reasoning, instruction-following, and structured output generation.
 
