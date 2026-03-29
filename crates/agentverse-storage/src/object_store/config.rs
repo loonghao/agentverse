@@ -63,7 +63,7 @@ pub struct ObjectStoreConfig {
 /// The TOML representation uses a `backend` key for the tag:
 /// ```toml
 /// [object_store]
-/// backend = "s3"   # or "local" | "github" | "custom"
+/// backend = "s3"   # or "local" | "github" | "custom" | "bkrepo"
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "backend", rename_all = "lowercase")]
@@ -76,6 +76,8 @@ pub enum ObjectStoreBackend {
     GitHub(GitHubConfig),
     /// Fully custom HTTP endpoint for organisations with proprietary storage.
     Custom(CustomConfig),
+    /// Tencent BlueKing bk-repo Generic Repository.
+    BkRepo(BkRepoConfig),
 }
 
 // ── S3-compatible ─────────────────────────────────────────────────────────────
@@ -167,4 +169,59 @@ pub struct CustomConfig {
     /// Defaults to `None` (no auth / public CDN).
     #[serde(default)]
     pub download_auth: DownloadAuth,
+}
+
+// ── bk-repo ───────────────────────────────────────────────────────────────────
+
+/// Configuration for the Tencent BlueKing bk-repo Generic Repository backend.
+///
+/// bk-repo is an artifact management platform built on a microservice architecture.
+/// The Generic Repository type supports storing arbitrary binary files via a simple
+/// REST API:
+///
+/// | Operation | Method   | Path                                            |
+/// |-----------|----------|-------------------------------------------------|
+/// | Upload    | `PUT`    | `/generic/{project}/{repo}/{path}`              |
+/// | Download  | `GET`    | `/generic/{project}/{repo}/{path}?download=true`|
+/// | Delete    | `DELETE` | `/generic/{project}/{repo}/{path}`              |
+///
+/// ## Authentication
+///
+/// bk-repo supports HTTP Basic Authentication (`Authorization: Basic <base64>`).
+/// The username and password correspond to the bk-repo platform account credentials.
+///
+/// ## Example TOML
+/// ```toml
+/// [object_store]
+/// backend = "bkrepo"
+///
+/// [object_store.bkrepo]
+/// endpoint = "https://bkrepo.example.com"
+/// project  = "my-project"
+/// repo     = "agentverse-packages"
+/// username = "admin"
+/// password = "secret"
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BkRepoConfig {
+    /// Base URL of the bk-repo server (no trailing slash).
+    /// Example: `"https://bkrepo.example.com"`
+    pub endpoint: String,
+    /// bk-repo project name that owns the repository.
+    pub project: String,
+    /// bk-repo Generic repository name within the project.
+    pub repo: String,
+    /// Username for HTTP Basic Authentication.
+    /// Falls back to the `BKREPO_USERNAME` environment variable when `None`.
+    pub username: Option<String>,
+    /// Password for HTTP Basic Authentication.
+    /// Falls back to the `BKREPO_PASSWORD` environment variable when `None`.
+    pub password: Option<String>,
+    /// Overwrite existing files on upload.  Defaults to `true`.
+    #[serde(default = "default_overwrite")]
+    pub overwrite: bool,
+}
+
+fn default_overwrite() -> bool {
+    true
 }

@@ -19,6 +19,7 @@ object_store = { workspace = true }
 bytes = { workspace = true }
 reqwest = { workspace = true }
 tokio = { workspace = true }
+base64 = "0.22.1"
 
 [dev-dependencies]
 tempfile = { workspace = true }
