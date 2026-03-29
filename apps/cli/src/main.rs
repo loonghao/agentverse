@@ -1,6 +1,7 @@
 mod client;
 mod commands;
 mod config;
+mod memory;
 
 use clap::{Parser, Subcommand};
 
@@ -72,6 +73,12 @@ enum Commands {
     /// Submit benchmark results for an artifact (agent use)
     Benchmark(commands::benchmark::BenchmarkArgs),
 
+    // ── Memory & Usage ─────────────────────────────────────────────────────────
+    /// Install a skill and bind it to the current agent (records usage)
+    Install(commands::install::InstallArgs),
+    /// Manage the agent's skill memory: status, archive, restore, stats, gc
+    Memory(commands::memory::MemoryArgs),
+
     // ── Self-management ────────────────────────────────────────────────────────
     /// Update the agentverse CLI to the latest version
     SelfUpdate(commands::self_update::SelfUpdateArgs),
@@ -118,6 +125,9 @@ async fn main() -> anyhow::Result<()> {
         // Agent
         Commands::Learn(args) => commands::learn::run(args, &client).await,
         Commands::Benchmark(args) => commands::benchmark::run(args, &client).await,
+        // Memory & Usage
+        Commands::Install(args) => commands::install::run(args, &client).await,
+        Commands::Memory(args) => commands::memory::run(args).await,
         // Self-management
         Commands::SelfUpdate(args) => commands::self_update::run(args).await,
     }

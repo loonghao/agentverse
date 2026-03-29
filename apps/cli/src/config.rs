@@ -8,6 +8,9 @@ pub struct CliConfig {
     pub server: Option<String>,
     pub token: Option<String>,
     pub username: Option<String>,
+    /// Which agent runtime this CLI is operating as (e.g. "augment", "claude").
+    /// Used as the default `agent_kind` for install / memory commands.
+    pub agent_kind: Option<String>,
 }
 
 impl CliConfig {
