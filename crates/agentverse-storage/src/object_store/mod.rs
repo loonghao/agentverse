@@ -36,10 +36,12 @@ pub mod backends;
 pub mod config;
 pub mod error;
 
-pub use backends::{CustomBackend, GitHubReleaseBackend, LocalDiskBackend, S3Backend};
+pub use backends::{
+    BkRepoBackend, CustomBackend, GitHubReleaseBackend, LocalDiskBackend, S3Backend,
+};
 pub use config::{
-    CustomConfig, DownloadAuth, GitHubConfig, LocalConfig, ObjectStoreBackend, ObjectStoreConfig,
-    S3Config,
+    BkRepoConfig, CustomConfig, DownloadAuth, GitHubConfig, LocalConfig, ObjectStoreBackend,
+    ObjectStoreConfig, S3Config,
 };
 pub use error::ObjectStoreError;
 
@@ -99,6 +101,7 @@ pub fn build_object_store(
         ObjectStoreBackend::Local(local) => Arc::new(LocalDiskBackend::new(local.clone())?),
         ObjectStoreBackend::GitHub(gh) => Arc::new(GitHubReleaseBackend::new(gh.clone())),
         ObjectStoreBackend::Custom(custom) => Arc::new(CustomBackend::new(custom.clone())),
+        ObjectStoreBackend::BkRepo(bkrepo) => Arc::new(BkRepoBackend::new(bkrepo.clone())),
     };
     tracing::info!(backend = store.backend_name(), "object store initialised");
     Ok(store)

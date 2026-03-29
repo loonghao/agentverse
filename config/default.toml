@@ -25,19 +25,43 @@ default_ttl_secs = 300
 #   s3      — AWS S3 / Tencent COS / MinIO / Cloudflare R2 (S3-protocol)
 #   github  — GitHub Releases (assets on a dedicated repo)
 #   custom  — organisation-owned HTTP endpoint
+#   bkrepo  — Tencent BlueKing bk-repo Generic Repository (default)
 #
 # For E2E tests, keep backend = "local"; no credentials needed.
 
+# ── bk-repo (default) ─────────────────────────────────────────────────────────
+# Tencent BlueKing bk-repo Generic Repository.
+# Source: https://github.com/Tencentblueking/bk-repo
+#
+# Files are stored under: /generic/{project}/{repo}/{key}
+# Authentication uses HTTP Basic Auth (username + password).
+# Credentials can also be set via BKREPO_USERNAME / BKREPO_PASSWORD env vars.
+
 [object_store]
-backend = "local"
+backend = "bkrepo"
 
-[object_store.local]
-# Directory where uploaded packages are written to disk.
-base_dir = "/tmp/agentverse-packages"
-# HTTP URL prefix the server serves at GET /files/* (same host as the API).
-serve_url = "http://localhost:8080/files"
+[object_store.bkrepo]
+# Base URL of your bk-repo server (no trailing slash).
+endpoint = "https://bkrepo.example.com"
+# bk-repo project name.
+project  = "my-project"
+# Generic repository name within the project.
+repo     = "agentverse-packages"
+# Credentials — prefer env vars BKREPO_USERNAME / BKREPO_PASSWORD in production.
+username = "admin"
+password = "change-me-in-production"
+# Overwrite existing files on re-upload (default: true).
+overwrite = true
 
-# ── Uncomment and configure one of the following for production ───────────────
+# ── Local filesystem (for dev / E2E tests) ────────────────────────────────────
+# [object_store]
+# backend = "local"
+#
+# [object_store.local]
+# base_dir  = "/tmp/agentverse-packages"
+# serve_url = "http://localhost:8080/files"
+
+# ── Uncomment and configure one of the following for other production backends ─
 
 # [object_store]
 # backend = "s3"

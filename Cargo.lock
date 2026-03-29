@@ -10,7 +10,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "agentverse"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "agentverse-updater",
  "anyhow",
@@ -32,7 +32,7 @@ dependencies = [
 
 [[package]]
 name = "agentverse-api"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "agentverse-auth",
  "agentverse-core",
@@ -67,7 +67,7 @@ dependencies = [
 
 [[package]]
 name = "agentverse-auth"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "agentverse-core",
  "argon2",
@@ -86,7 +86,7 @@ dependencies = [
 
 [[package]]
 name = "agentverse-core"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "async-trait",
  "chrono",
@@ -100,7 +100,7 @@ dependencies = [
 
 [[package]]
 name = "agentverse-events"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "agentverse-core",
  "agentverse-storage",
@@ -117,7 +117,7 @@ dependencies = [
 
 [[package]]
 name = "agentverse-search"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "agentverse-core",
  "agentverse-storage",
@@ -135,7 +135,7 @@ dependencies = [
 
 [[package]]
 name = "agentverse-server"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "agentverse-api",
  "agentverse-auth",
@@ -161,7 +161,7 @@ dependencies = [
 
 [[package]]
 name = "agentverse-skills"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "agentverse-core",
  "anyhow",
@@ -183,7 +183,7 @@ dependencies = [
 
 [[package]]
 name = "agentverse-social"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "agentverse-core",
  "async-trait",
@@ -197,11 +197,12 @@ dependencies = [
 
 [[package]]
 name = "agentverse-storage"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "agentverse-core",
  "async-trait",
  "axum 0.8.8",
+ "base64 0.22.1",
  "bytes",
  "chrono",
  "object_store",
@@ -219,7 +220,7 @@ dependencies = [
 
 [[package]]
 name = "agentverse-updater"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "reqwest",
@@ -230,7 +231,7 @@ dependencies = [
 
 [[package]]
 name = "agentverse-versioning"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "agentverse-core",
  "async-trait",
