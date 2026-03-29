@@ -1,5 +1,6 @@
 ---
 name: agentverse-cli
+kind: skill
 description: "Publish, discover, and manage AI skills, agents, workflows, souls and prompts from the AgentVerse marketplace. Use when working with the agentverse CLI to search/publish artifacts, authenticate, or manage AI agent ecosystem components."
 version: 0.1.4
 metadata:
@@ -34,13 +35,23 @@ irm https://raw.githubusercontent.com/loonghao/agentverse/main/install.ps1 | iex
 
 ## What is AgentVerse?
 
-| Kind | Description |
-|------|-------------|
-| `skill` | Reusable capabilities (tools, functions) |
-| `agent` | Autonomous AI agents with defined capabilities |
-| `workflow` | Multi-step orchestration pipelines |
-| `soul` | Persona and personality configurations |
-| `prompt` | Optimized prompt templates |
+| Kind | Description | Example |
+|------|-------------|---------|
+| `skill` | Reusable capabilities (tools, functions) | code-reviewer, api-smoke-tester |
+| `agent` | Autonomous AI agents with defined capabilities | code-assistant, qa-engineer |
+| `workflow` | Multi-step orchestration pipelines | ci-review-pipeline, release-workflow |
+| `soul` | Persona and personality configurations | empathetic-counselor, developer-buddy |
+| `prompt` | Optimized prompt templates | chain-of-thought, self-ask |
+
+### Kind Manifest Docs
+
+| Kind | Manifest Guide |
+|------|----------------|
+| `skill` | [Skill format](https://github.com/loonghao/agentverse/blob/main/docs/manifest/format.md) |
+| `soul` | [Soul format](https://github.com/loonghao/agentverse/blob/main/docs/manifest/soul.md) |
+| `prompt` | [Prompt format](https://github.com/loonghao/agentverse/blob/main/docs/manifest/prompt.md) |
+| `workflow` | [Workflow format](https://github.com/loonghao/agentverse/blob/main/docs/manifest/workflow.md) |
+| `agent` | [Agent format](https://github.com/loonghao/agentverse/blob/main/docs/manifest/agent.md) |
 
 ## Quick Reference
 
@@ -139,6 +150,90 @@ agentverse self-update
 agentverse self-update --token ghp_your_token
 ```
 
+### Working with Souls
+
+Souls define the personality and behavioural constraints of an AI agent.
+
+```bash
+# Publish a soul
+agentverse publish --file soul.toml
+
+# Get a soul (returns content.json + manifest)
+agentverse get --kind soul --namespace agentverse --name empathetic-counselor
+
+# Search available souls
+agentverse search --query "empathetic support" --kind soul
+
+# List all souls in a namespace
+agentverse list --kind soul --namespace myorg
+```
+
+### Working with Prompts
+
+Prompts are versioned, reusable LLM instruction templates.
+
+```bash
+# Publish a prompt template
+agentverse publish --file prompt.toml
+
+# Retrieve as JSON (for programmatic use)
+agentverse get --kind prompt --namespace agentverse --name chain-of-thought --format json
+
+# Search prompt templates
+agentverse search --query "chain of thought reasoning" --kind prompt
+```
+
+### Working with Workflows
+
+Workflows are DAG pipelines that compose skills and agents.
+
+```bash
+# Publish a workflow
+agentverse publish --file workflow.toml
+
+# Get and export as GitHub Actions
+agentverse get --kind workflow --namespace myorg --name ci-review-pipeline \
+  --format github-actions > .github/workflows/ci.yml
+
+# Export as Argo Workflows
+agentverse get --kind workflow --namespace myorg --name ci-review-pipeline \
+  --format argo-workflow > ci-review.argo.yaml
+
+# Run a workflow manually
+agentverse run --kind workflow --namespace myorg --name ci-review-pipeline \
+  --input pr_url=https://github.com/org/repo/pull/42
+```
+
+### Working with Agents
+
+Agents are autonomous AI entities combining soul + skills + protocols.
+
+```bash
+# Publish an agent
+agentverse publish --file agent.toml
+
+# Run an agent (MCP server mode)
+agentverse run --kind agent --namespace myorg --name code-assistant
+
+# Get agent details (includes A2A agent card)
+agentverse get --kind agent --namespace myorg --name code-assistant --format json
+```
+
+### OpenClaw Soul Agent Integration
+
+```yaml
+# openclaw-config.yaml — attach an AgentVerse soul to a Soul Agent
+soul:
+  source: agentverse
+  namespace: agentverse
+  name: empathetic-counselor
+  version: ">=0.1.0"
+agent:
+  system_prompt: "{{soul.system_prompt}}"
+  tone: "{{soul.tone}}"
+  constraints: "{{soul.constraints}}"
+```
+
 ## Global Flags
 
 | Flag | Env Var | Default | Description |
@@ -150,4 +245,5 @@ agentverse self-update --token ghp_your_token
 
 - **Repository**: https://github.com/loonghao/agentverse
 - **Docker Image**: `ghcr.io/loonghao/agentverse:latest`
+- **Manifest Docs**: [Skill](https://github.com/loonghao/agentverse/blob/main/docs/manifest/format.md) · [Soul](https://github.com/loonghao/agentverse/blob/main/docs/manifest/soul.md) · [Prompt](https://github.com/loonghao/agentverse/blob/main/docs/manifest/prompt.md) · [Workflow](https://github.com/loonghao/agentverse/blob/main/docs/manifest/workflow.md) · [Agent](https://github.com/loonghao/agentverse/blob/main/docs/manifest/agent.md)
 

@@ -1,5 +1,6 @@
 ---
 name: code-reviewer
+kind: skill
 description: Reviews a pull request or diff and produces structured feedback on correctness, security, performance, and style.
 tags: [code-review, ci, security, quality]
 version: "0.1.0"

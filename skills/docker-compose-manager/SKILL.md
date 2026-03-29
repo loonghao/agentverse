@@ -1,5 +1,6 @@
 ---
 name: docker-compose-manager
+kind: skill
 description: "Manage multi-container Docker environments using docker compose. Start, stop, inspect, and health-check services defined in a compose file — ideal for local dev, CI service orchestration, and integration test setup."
 version: "0.1.0"
 tags: [docker, containers, devops, ci]

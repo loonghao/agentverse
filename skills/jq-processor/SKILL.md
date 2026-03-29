@@ -1,5 +1,6 @@
 ---
 name: jq-processor
+kind: skill
 description: "Transform, filter, and reshape JSON data using jq — the lightweight command-line JSON processor. Ideal for extracting fields from API responses, transforming CI artifact payloads, and scripting data pipelines."
 version: "0.1.0"
 tags: [json, data, cli, transformation]
