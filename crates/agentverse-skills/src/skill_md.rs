@@ -30,6 +30,9 @@ use serde::Deserialize;
 pub struct ParsedSkillMd {
     /// Artifact slug, e.g. `my-skill`.
     pub name: String,
+    /// Registry namespace (user or org), e.g. `myorg`.
+    /// Required for `agentverse publish SKILL.md`.
+    pub namespace: Option<String>,
     /// Artifact kind: `skill` | `soul` | `prompt` | `workflow` | `agent`.
     /// Defaults to `"skill"` when the `kind:` field is absent.
     pub kind: String,
@@ -46,6 +49,12 @@ pub struct ParsedSkillMd {
     pub license: Option<String>,
     /// Artifact author handle or name.
     pub author: Option<String>,
+    /// Capabilities block as JSON (`input_modalities`, `output_modalities`,
+    /// `protocols`, `permissions`, etc.). Empty object when absent.
+    pub capabilities: serde_json::Value,
+    /// Dependencies block as JSON (skill slugs → version constraints).
+    /// Empty object when absent.
+    pub dependencies: serde_json::Value,
     /// Raw `metadata:` block preserved as JSON (includes `openclaw.*`,
     /// `clawdbot.*`, runtime requirements, install instructions, etc.)
     pub metadata: serde_json::Value,
@@ -55,6 +64,7 @@ impl Default for ParsedSkillMd {
     fn default() -> Self {
         Self {
             name: String::new(),
+            namespace: None,
             kind: "skill".to_owned(),
             description: None,
             version: None,
@@ -62,6 +72,8 @@ impl Default for ParsedSkillMd {
             homepage: None,
             license: None,
             author: None,
+            capabilities: serde_json::Value::Object(Default::default()),
+            dependencies: serde_json::Value::Object(Default::default()),
             metadata: serde_json::Value::Null,
         }
     }
@@ -72,6 +84,8 @@ impl Default for ParsedSkillMd {
 #[serde(default)]
 struct RawFrontmatter {
     name: Option<String>,
+    /// Registry namespace (user or org). Required for `publish`.
+    namespace: Option<String>,
     /// Artifact kind: skill | soul | prompt | workflow | agent.
     kind: Option<String>,
     description: Option<String>,
@@ -81,6 +95,10 @@ struct RawFrontmatter {
     homepage: Option<String>,
     license: Option<String>,
     author: Option<String>,
+    /// Structured capability declarations (input/output modalities, protocols…)
+    capabilities: Option<serde_yaml::Value>,
+    /// Skill-level dependencies: skill slug → version constraint.
+    dependencies: Option<serde_yaml::Value>,
     metadata: Option<serde_yaml::Value>,
 }
 
@@ -125,11 +143,14 @@ pub fn parse_skill_md(content: &str, fallback_name: &str) -> ParsedSkillMd {
         })
         .unwrap_or_else(|| "skill".to_owned());
 
+    let empty_obj = || serde_json::Value::Object(Default::default());
+
     ParsedSkillMd {
         name: raw
             .name
             .filter(|n| !n.is_empty())
             .unwrap_or_else(|| fallback_name.to_owned()),
+        namespace: raw.namespace,
         kind,
         description: raw.description,
         version: raw.version.and_then(yaml_scalar_to_string),
@@ -137,6 +158,8 @@ pub fn parse_skill_md(content: &str, fallback_name: &str) -> ParsedSkillMd {
         homepage,
         license: raw.license,
         author: raw.author,
+        capabilities: raw.capabilities.map(yaml_to_json).unwrap_or_else(empty_obj),
+        dependencies: raw.dependencies.map(yaml_to_json).unwrap_or_else(empty_obj),
         metadata,
     }
 }

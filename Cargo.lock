@@ -13,6 +13,7 @@ name = "agentverse"
 version = "0.1.8"
 dependencies = [
  "agentverse-core",
+ "agentverse-skills",
  "agentverse-updater",
  "anyhow",
  "chrono",

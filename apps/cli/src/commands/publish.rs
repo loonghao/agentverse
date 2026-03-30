@@ -7,7 +7,7 @@ use crate::client::HubClient;
 
 #[derive(Args)]
 pub struct PublishArgs {
-    /// Path to the manifest file (TOML or JSON)
+    /// Path to the manifest file (TOML, JSON, or SKILL.md / SOUL.md / AGENT.md)
     #[arg(default_value = "agentverse.toml")]
     pub manifest: std::path::PathBuf,
     /// Content file to publish (JSON). Defaults to manifest dir/content.json
@@ -53,12 +53,25 @@ pub async fn run(args: PublishArgs, client: &HubClient) -> Result<()> {
     let raw = std::fs::read_to_string(&args.manifest)
         .with_context(|| format!("reading {}", args.manifest.display()))?;
 
-    let mf: ManifestFile = if args
+    let ext = args
         .manifest
         .extension()
-        .map(|e| e == "toml")
-        .unwrap_or(false)
-    {
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    // SKILL.md / SOUL.md / AGENT.md — parse YAML frontmatter + Markdown body
+    if ext == "md" {
+        let fallback_name = args
+            .manifest
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown")
+            .to_lowercase();
+        return publish_from_skill_md(&raw, &fallback_name, args, client).await;
+    }
+
+    let mf: ManifestFile = if ext == "toml" {
         toml::from_str(&raw).context("parsing TOML manifest")?
     } else {
         serde_json::from_str(&raw).context("parsing JSON manifest")?
@@ -160,6 +173,134 @@ pub async fn run(args: PublishArgs, client: &HubClient) -> Result<()> {
     }
 
     Ok(())
+}
+
+// ── SKILL.md publish path ─────────────────────────────────────────────────────
+
+/// Publish an artifact described by a SKILL.md / SOUL.md / AGENT.md file.
+///
+/// The YAML frontmatter supplies all metadata; the Markdown body is stored as
+/// `content.text`. A `namespace:` key in the frontmatter is required.
+///
+/// Example frontmatter:
+/// ```yaml
+/// ---
+/// name: my-skill
+/// namespace: myorg
+/// kind: skill                # optional — defaults to "skill"
+/// description: Does a thing.
+/// version: "0.1.0"
+/// tags: [ci, e2e]
+/// capabilities:
+///   input_modalities: [text]
+///   output_modalities: [text]
+///   protocols: [mcp]
+///   permissions: []
+/// ---
+/// ```
+async fn publish_from_skill_md(
+    raw: &str,
+    fallback_name: &str,
+    args: PublishArgs,
+    client: &HubClient,
+) -> Result<()> {
+    use agentverse_skills::parse_skill_md;
+
+    let parsed = parse_skill_md(raw, fallback_name);
+
+    let namespace = parsed.namespace.ok_or_else(|| {
+        anyhow::anyhow!(
+            "SKILL.md must include `namespace:` in its frontmatter when used with `publish`.\n\
+             Add a line like `namespace: myorg` to the YAML front matter."
+        )
+    })?;
+
+    // Tags as JSON array
+    let tags = serde_json::Value::Array(
+        parsed
+            .tags
+            .into_iter()
+            .map(serde_json::Value::String)
+            .collect(),
+    );
+
+    // Markdown body (text after the closing ---) becomes the skill content.
+    let body_text = extract_md_body(raw);
+
+    let manifest_json = serde_json::json!({
+        "description": parsed.description.unwrap_or_default(),
+        "capabilities": parsed.capabilities,
+        "dependencies": parsed.dependencies,
+        "tags": tags,
+        "extra": if parsed.metadata.is_null() { serde_json::json!({}) } else { parsed.metadata },
+    });
+
+    let body = serde_json::json!({
+        "namespace": namespace,
+        "name": parsed.name,
+        "manifest": manifest_json,
+        "content": { "text": body_text },
+        "bump": args.bump,
+        "changelog": args.changelog,
+    });
+
+    let api_path = format!("/api/v1/{}", parsed.kind);
+
+    // Create first; on conflict publish a new version instead.
+    let resp: serde_json::Value = match client.post_json(&api_path, &body).await {
+        Ok(r) => r,
+        Err(e) if e.to_string().contains("409") || e.to_string().contains("already exists") => {
+            let pub_path = format!(
+                "/api/v1/{}/{}/{}/publish",
+                parsed.kind, namespace, parsed.name
+            );
+            let pub_body = serde_json::json!({
+                "content": { "text": body_text },
+                "changelog": args.changelog,
+                "bump": args.bump,
+            });
+            client.post_json(&pub_path, &pub_body).await?
+        }
+        Err(e) => return Err(e),
+    };
+
+    let ver = resp["version"]["version"]
+        .as_str()
+        .or_else(|| resp["bump"].as_str())
+        .unwrap_or("?");
+
+    println!(
+        "\n{} Published {}/{}/{}  {}\n",
+        "✓".green().bold(),
+        parsed.kind,
+        namespace,
+        parsed.name,
+        format!("v{ver}").green().bold(),
+    );
+
+    Ok(())
+}
+
+/// Extract the Markdown body that follows the closing `---` of the frontmatter.
+/// Returns the full content unchanged when no frontmatter is present.
+fn extract_md_body(content: &str) -> &str {
+    let trimmed = content.trim_start();
+    if !trimmed.starts_with("---") {
+        return content;
+    }
+    // Skip opening `---` line
+    let after_open = match trimmed.find('\n') {
+        Some(i) => &trimmed[i + 1..],
+        None => return "",
+    };
+    // Find closing `---`
+    match after_open.find("\n---") {
+        Some(end) => {
+            let rest = &after_open[end + 4..]; // skip "\n---"
+            rest.trim_start_matches('\n')
+        }
+        None => content,
+    }
 }
 
 /// Upload a skill zip to the server's internal object store.

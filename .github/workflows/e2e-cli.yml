@@ -160,23 +160,25 @@ jobs:
       # ══════════════════════════════════════════════════════════════════════════
       # CLI: WRITE OPERATIONS
       # ══════════════════════════════════════════════════════════════════════════
-      - name: "CLI — publish new skill via manifest file"
+      - name: "CLI — publish new skill via SKILL.md"
         run: |
           mkdir -p /tmp/e2e-cli-skill
+          # SKILL.md is the canonical format: YAML frontmatter + Markdown body.
+          # publish.rs detects the .md extension and calls parse_skill_md().
+          # namespace: is required in the frontmatter for publish.
           cat > /tmp/e2e-cli-skill/SKILL.md << 'EOF'
           ---
           name: cli-published-skill
           namespace: e2eorg
-          display_name: CLI Published Skill
+          kind: skill
           description: Published via CLI in e2e test
-          version: 0.1.0
+          version: "0.1.0"
           tags: [cli, e2e]
           capabilities:
             input_modalities: [text]
             output_modalities: [text]
             protocols: [mcp]
             permissions: []
-          dependencies: {}
           ---
           # CLI Published Skill
           This skill was published by the CLI e2e test.
@@ -186,9 +188,9 @@ jobs:
             --server "http://localhost:${PORT}" --token "${E2E_TOKEN}" \
             publish /tmp/e2e-cli-skill/SKILL.md)
           echo "$OUT"
-          echo "$OUT" | grep -qiE "publish|success|cli-published-skill" \
-            || (echo "❌ publish via manifest: no success message" && exit 1)
-          echo "✅ publish via manifest OK"
+          echo "$OUT" | grep -qiE "Published|cli-published-skill" \
+            || (echo "❌ publish via SKILL.md: no success message" && exit 1)
+          echo "✅ publish via SKILL.md OK"
 
       - name: "CLI — social (comment, like, unlike, rate)"
         run: |
