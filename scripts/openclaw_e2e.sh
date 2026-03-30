@@ -27,7 +27,9 @@
 
 set -euo pipefail
 
-CLI=/usr/local/bin/agentverse
+# Allow overriding the CLI path so the script works both inside Docker
+# (default: /usr/local/bin/agentverse) and on a CI runner (e.g. ./target/debug/agentverse).
+CLI="${AGENTVERSE_CLI:-/usr/local/bin/agentverse}"
 SERVER="${AGENTVERSE_URL:-http://server:8080}"
 AGENT_KIND="${AGENT_KIND:-openclaw}"
 AGENT_USER="${AGENT_USER:-openclaw-e2e-agent}"
@@ -46,8 +48,15 @@ section() { echo; echo "──── $* ────"; }
 
 # ── 1. Dependencies ───────────────────────────────────────────────────────────
 section "Installing dependencies"
-apt-get update -qq && apt-get install -y --no-install-recommends curl jq > /dev/null 2>&1
-ok "curl + jq installed"
+if ! command -v curl >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
+  # Docker container: install as root; CI runner: use sudo
+  if [ "$(id -u)" -eq 0 ]; then
+    apt-get update -qq && apt-get install -y --no-install-recommends curl jq > /dev/null 2>&1
+  else
+    sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends curl jq > /dev/null 2>&1
+  fi
+fi
+ok "curl + jq ready"
 
 # ── 2. Wait for server ────────────────────────────────────────────────────────
 section "Waiting for agentverse server"
@@ -80,8 +89,9 @@ section "Logging in"
 LOGIN_RESP=$(curl -sf -X POST "${SERVER}/api/v1/auth/login" \
   -H "content-type: application/json" \
   -d "{\"username\": \"${AGENT_USER}\", \"password\": \"${AGENT_PASS}\"}")
-TOKEN=$(echo "$LOGIN_RESP" | jq -r '.token // empty')
-[ -n "$TOKEN" ] && ok "JWT token obtained" || { fail "login failed"; exit 1; }
+# The API returns { "access_token": "...", "token_type": "Bearer", ... }
+TOKEN=$(echo "$LOGIN_RESP" | jq -r '.access_token // empty')
+[ -n "$TOKEN" ] && ok "JWT token obtained" || { fail "login failed (response: ${LOGIN_RESP})"; exit 1; }
 
 # Save token to CLI config so subsequent commands pick it up automatically.
 $CLI --server "$SERVER" --token "$TOKEN" whoami > /dev/null

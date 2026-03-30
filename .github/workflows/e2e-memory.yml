@@ -1,0 +1,223 @@
+name: E2E — Memory & Agent Lifecycle Tests
+
+# Triggered by ci.yml via workflow_call, or manually for debugging.
+on:
+  workflow_call: {}
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_HTTP_TIMEOUT: "600"
+  CARGO_NET_RETRY: "10"
+
+jobs:
+  e2e-memory:
+    name: E2E Memory & Agent Lifecycle
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: agentverse
+          POSTGRES_PASSWORD: agentverse_test
+          POSTGRES_DB: agentverse_mem_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://agentverse:agentverse_test@localhost:5432/agentverse_mem_e2e
+      JWT_SECRET: e2e-mem-test-secret-do-not-use-in-production
+      PORT: "18083"
+      CLI: "./target/debug/agentverse"
+      SERVER_BASE: "http://localhost:18083"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup vx
+        uses: loonghao/vx@main
+        with:
+          version: "0.8.0"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-key-prefix: vx-tools-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Setup tools (vx)
+        run: vx setup
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: e2e-memory
+
+      - name: Build server and CLI (debug)
+        run: vx cargo build -p agentverse-server -p agentverse
+
+      - name: Start server in background
+        run: |
+          mkdir -p /tmp/agentverse-mem
+          RUST_LOG=info,agentverse=debug \
+            nohup ./target/debug/agentverse-server \
+            > /tmp/agentverse-mem/server.log 2>&1 &
+          echo "SERVER_PID=$!" >> "$GITHUB_ENV"
+
+      - name: Wait for server to be ready
+        run: |
+          DEADLINE=$(( $(date +%s) + 90 ))
+          while true; do
+            if ! kill -0 "${SERVER_PID}" 2>/dev/null; then
+              echo "❌ Server crashed"; cat /tmp/agentverse-mem/server.log; exit 1
+            fi
+            curl -sf "http://localhost:${PORT}/health" > /dev/null 2>&1 && echo "✅ Server ready" && break
+            [ "$(date +%s)" -ge "$DEADLINE" ] && { cat /tmp/agentverse-mem/server.log; exit 1; }
+            sleep 3
+          done
+
+      # ══════════════════════════════════════════════════════════════════════════
+      # SETUP: register user + create skill so install has something to bind to
+      # ══════════════════════════════════════════════════════════════════════════
+      - name: "Setup — register user and create smoke-skill"
+        run: |
+          TOKEN=$(curl -sf -X POST "${SERVER_BASE}/api/v1/auth/register" \
+            -H 'content-type: application/json' \
+            -d '{"username":"e2e_user","email":"e2e@agentverse.test","password":"E2ePass123!"}' \
+            | jq -r '.access_token')
+          echo "E2E_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+
+          curl -sf -X POST "${SERVER_BASE}/api/v1/skills" \
+            -H "authorization: Bearer ${TOKEN}" -H 'content-type: application/json' \
+            -d '{
+              "namespace":"e2eorg","name":"smoke-skill","display_name":"E2E Smoke Skill",
+              "content":{},
+              "manifest":{
+                "description":"Memory e2e test skill",
+                "capabilities":{"input_modalities":["text"],"output_modalities":["text"],"protocols":["mcp"],"permissions":[]},
+                "dependencies":{},"tags":["e2e"],"extra":null
+              }
+            }' | jq -r '.artifact.id'
+          echo "✅ setup complete"
+
+      # ══════════════════════════════════════════════════════════════════════════
+      # INSTALL: bind skill to openclaw and augment agents
+      # ══════════════════════════════════════════════════════════════════════════
+      - name: "Memory — install skill for openclaw agent"
+        run: |
+          OUT=$("${CLI}" --server "${SERVER_BASE}" --token "${E2E_TOKEN}" \
+            install skill/e2eorg/smoke-skill --agent-kind openclaw)
+          echo "$OUT"
+          echo "$OUT" | grep -qiE "install|success|smoke-skill" \
+            || (echo "❌ openclaw install failed" && exit 1)
+          echo "✅ openclaw install OK"
+
+      - name: "Memory — install skill for augment agent (isolation check)"
+        run: |
+          OUT=$("${CLI}" --server "${SERVER_BASE}" --token "${E2E_TOKEN}" \
+            install skill/e2eorg/smoke-skill --agent-kind augment)
+          echo "$OUT"
+          echo "$OUT" | grep -qiE "install|success|smoke-skill" \
+            || (echo "❌ augment install failed" && exit 1)
+          echo "✅ augment install OK"
+
+      # ══════════════════════════════════════════════════════════════════════════
+      # STATUS: hot state after fresh install
+      # ══════════════════════════════════════════════════════════════════════════
+      - name: "Memory — status shows installed skills"
+        run: |
+          OUT=$("${CLI}" --server "${SERVER_BASE}" --token "${E2E_TOKEN}" memory status)
+          echo "$OUT"
+          echo "$OUT" | grep -q "smoke-skill" || (echo "❌ smoke-skill not in status" && exit 1)
+          echo "$OUT" | grep -qiE "hot|🔥" || (echo "❌ skill not in hot state" && exit 1)
+          echo "✅ memory status OK"
+
+
+
+      # ══════════════════════════════════════════════════════════════════════════
+      # USE: record usage and verify use_count
+      # ══════════════════════════════════════════════════════════════════════════
+      - name: "Memory — record 3 usage events"
+        run: |
+          for i in 1 2 3; do
+            OUT=$("${CLI}" --server "${SERVER_BASE}" --token "${E2E_TOKEN}" \
+              memory use skill/e2eorg/smoke-skill --agent-kind openclaw)
+            echo "$OUT"
+            # Output: "🧠 Recorded use of skill/e2eorg/smoke-skill (total: N)"
+            echo "$OUT" | grep -qiE "Recorded|total|🧠" \
+              || (echo "❌ memory use #$i failed" && exit 1)
+            echo "  ✅ use #$i OK"
+          done
+          echo "✅ memory use x3 OK"
+
+      - name: "Memory — stats shows leaderboard"
+        run: |
+          OUT=$("${CLI}" --server "${SERVER_BASE}" --token "${E2E_TOKEN}" memory stats)
+          echo "$OUT"
+          echo "$OUT" | grep -q "smoke-skill" || (echo "❌ smoke-skill not in stats" && exit 1)
+          echo "✅ memory stats OK"
+
+      - name: "Memory — archive (no-op on hot skills)"
+        run: |
+          OUT=$("${CLI}" --server "${SERVER_BASE}" --token "${E2E_TOKEN}" memory archive)
+          echo "$OUT"
+          echo "✅ memory archive (no-op) OK"
+
+      - name: "Memory — restore archived skill"
+        run: |
+          # Skill is hot here; mark_restored still succeeds (binding exists).
+          # Output: "✅ Restored skill/e2eorg/smoke-skill (agent: openclaw) → hot 🔥"
+          OUT=$("${CLI}" --server "${SERVER_BASE}" --token "${E2E_TOKEN}" \
+            memory restore skill/e2eorg/smoke-skill --agent-kind openclaw)
+          echo "$OUT"
+          echo "$OUT" | grep -qiE "Restored|hot|✅" \
+            || (echo "❌ memory restore failed" && exit 1)
+          echo "✅ memory restore OK"
+
+      - name: "Memory — gc (no-op, nothing forgotten)"
+        run: |
+          OUT=$("${CLI}" --server "${SERVER_BASE}" --token "${E2E_TOKEN}" memory gc)
+          echo "$OUT"
+          echo "✅ memory gc (no-op) OK"
+
+      - name: "Memory — install --dry-run (idempotency)"
+        run: |
+          OUT=$("${CLI}" --server "${SERVER_BASE}" --token "${E2E_TOKEN}" \
+            install skill/e2eorg/smoke-skill --agent-kind openclaw --dry-run)
+          echo "$OUT"
+          echo "$OUT" | grep -qiE "dry.run|already|installed|would" \
+            || (echo "❌ --dry-run: unexpected output" && exit 1)
+          echo "✅ dry-run OK"
+
+      - name: "Memory — agent isolation (openclaw vs augment)"
+        run: |
+          # `memory status` shows all bindings for all agents — no --agent-kind flag.
+          # Both openclaw and augment were installed earlier, so both must appear.
+          OUT=$("${CLI}" --server "${SERVER_BASE}" --token "${E2E_TOKEN}" memory status)
+          echo "$OUT"
+          echo "$OUT" | grep -q "openclaw" \
+            || (echo "❌ status missing openclaw binding" && exit 1)
+          echo "$OUT" | grep -q "augment" \
+            || (echo "❌ status missing augment binding" && exit 1)
+          echo "$OUT" | grep -q "smoke-skill" \
+            || (echo "❌ status missing smoke-skill" && exit 1)
+          echo "✅ agent isolation OK"
+
+      # ══════════════════════════════════════════════════════════════════════════
+      # TEARDOWN
+      # ══════════════════════════════════════════════════════════════════════════
+      - name: Dump server logs
+        if: always()
+        run: |
+          echo "=== e2e-memory server logs (last 100 lines) ==="
+          tail -100 /tmp/agentverse-mem/server.log 2>/dev/null || echo "(no log file)"
+
+      - name: Stop server
+        if: always()
+        run: kill "${SERVER_PID}" 2>/dev/null || true
