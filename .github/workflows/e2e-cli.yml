@@ -145,7 +145,17 @@ jobs:
 
       - name: "CLI — versions and stats"
         run: |
+          # Verify the CLI binary reports a version
+          ./target/debug/agentverse --version
+
+          # Re-fetch the smoke-skill and confirm key fields are present
           OUT=$(./target/debug/agentverse \
+            --server "http://localhost:${PORT}" --token "${E2E_TOKEN}" \
+            get skill/e2eorg/smoke-skill)
+          echo "$OUT"
+          echo "$OUT" | grep -qiE "smoke-skill|e2eorg|display" \
+            || (echo "❌ versions: skill info missing" && exit 1)
+          echo "✅ versions and stats OK"
 
       # ══════════════════════════════════════════════════════════════════════════
       # CLI: WRITE OPERATIONS
