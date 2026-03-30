@@ -223,17 +223,20 @@ jobs:
       # ══════════════════════════════════════════════════════════════════════════
       - name: "CLI — register and login commands"
         run: |
+          # username is a positional argument; --email and --password are flags.
+          # Usage: agentverse register <USERNAME> [--email EMAIL] [--password PASSWORD]
           OUT=$(./target/debug/agentverse \
             --server "http://localhost:${PORT}" \
-            register --username cli_new_user --email cli@agentverse.test --password CliPass123!)
-          echo "$OUT" | grep -qiE "register|success|cli_new_user" \
+            register cli_new_user --email cli@agentverse.test --password CliPass123!)
+          echo "$OUT" | grep -qiE "Registered|cli_new_user" \
             || (echo "❌ CLI register: no success" && exit 1)
           echo "  ✅ CLI register OK"
 
+          # Usage: agentverse login <USERNAME> [--password PASSWORD]
           OUT=$(./target/debug/agentverse \
             --server "http://localhost:${PORT}" \
-            login --username cli_new_user --password CliPass123!)
-          echo "$OUT" | grep -qiE "login|success|token" \
+            login cli_new_user --password CliPass123!)
+          echo "$OUT" | grep -qiE "Logged in|cli_new_user" \
             || (echo "❌ CLI login: no success" && exit 1)
           echo "✅ CLI auth commands OK"
 
