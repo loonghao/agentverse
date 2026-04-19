@@ -2,7 +2,7 @@
 # cargo-chef separates dependency compilation from application code compilation,
 # so that Docker layer caching works correctly and build scripts (e.g. the
 # utoipa-swagger-ui downloader) run exactly once per dependency change.
-FROM rust:1.88-slim AS chef
+FROM rust:1.95-slim AS chef
 
 WORKDIR /app
 
