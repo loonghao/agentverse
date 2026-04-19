@@ -88,7 +88,7 @@ async-graphql = { version = "7", features = ["uuid", "chrono", "tracing"] }
 async-graphql-axum = { version = "7" }
 
 # Config
-config = { version = "0.14" }
+config = { version = "0.15" }
 dotenvy = { version = "0.15" }
 
 # HTTP client (used by agentverse-skills backends and updater)
