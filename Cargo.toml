@@ -77,7 +77,7 @@ anyhow = { version = "1" }
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 async-trait = { version = "0.1" }
-validator = { version = "0.19", features = ["derive"] }
+validator = { version = "0.20", features = ["derive"] }
 
 # OpenAPI
 utoipa = { version = "5", features = ["axum_extras", "uuid", "chrono"] }
