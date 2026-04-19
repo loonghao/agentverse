@@ -67,7 +67,7 @@ semver = { version = "1", features = ["serde"] }
 # Observability
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-opentelemetry = { version = "0.27" }
+opentelemetry = { version = "0.31" }
 
 # Error handling
 thiserror = { version = "2" }
