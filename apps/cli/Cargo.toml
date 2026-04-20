@@ -25,7 +25,7 @@ agentverse-core = { workspace = true }
 agentverse-skills = { workspace = true }
 agentverse-updater = { workspace = true }
 colored = "2"
-indicatif = "0.17"
+indicatif = "0.18"
 toml = { workspace = true }
 rpassword = "7"
 dirs-next = "2"
