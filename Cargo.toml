@@ -47,7 +47,7 @@ sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls", "uuid"
 
 # Redis
 deadpool-redis = { version = "0.18" }
-redis = { version = "0.27", features = ["tokio-comp", "json"] }
+redis = { version = "1.0", features = ["tokio-comp", "json"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
