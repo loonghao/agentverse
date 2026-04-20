@@ -24,7 +24,7 @@ chrono = { workspace = true }
 agentverse-core = { workspace = true }
 agentverse-skills = { workspace = true }
 agentverse-updater = { workspace = true }
-colored = "2"
+colored = "3"
 indicatif = "0.18"
 toml = { workspace = true }
 rpassword = "7"
