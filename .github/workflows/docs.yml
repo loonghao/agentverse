@@ -34,7 +34,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
           # Path to the lock file — tells setup-node where to find docs/package-lock.json
           cache-dependency-path: "docs/package-lock.json"
