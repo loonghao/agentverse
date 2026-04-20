@@ -127,7 +127,7 @@ jobs:
       # Dockerfile.prebuilt only runs `apt-get install` and `chmod`, which
       # execute on the native runner — no emulation overhead at all.
       - name: Build and push Docker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: docker-staging
           file: Dockerfile.prebuilt
