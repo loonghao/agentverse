@@ -18,7 +18,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 dotenvy = { workspace = true }
 uuid = { workspace = true }
-reqwest = { version = "0.12", features = ["json", "rustls-tls", "multipart"], default-features = false }
+reqwest = { version = "0.13", features = ["json", "rustls-tls", "multipart"], default-features = false }
 clap = { version = "4", features = ["derive", "env"] }
 chrono = { workspace = true }
 agentverse-core = { workspace = true }
