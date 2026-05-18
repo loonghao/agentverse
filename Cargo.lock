@@ -79,7 +79,7 @@ dependencies = [
  "ed25519-dalek",
  "hex",
  "jsonwebtoken",
- "rand 0.8.5",
+ "rand 0.10.0",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
